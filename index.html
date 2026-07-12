@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgroDesign · Navegador 3D · Monte Hermoso</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- Splash de portada -->
+<div id="splash">
+  <div class="splash-bg"></div>
+  <div class="splash-content">
+    <div class="splash-brand">
+      <span class="brand-icon">◑</span>
+      <span class="brand-name">AgroDesign</span>
+      <span class="brand-sub">Diseño de Paisajes Productivos</span>
+    </div>
+    <h1>Monte Hermoso</h1>
+    <p class="splash-tag">Recorré el campo en 3D y descubrí cómo se transforma<br>con el diseño de paisaje multifuncional</p>
+    <button id="btn-start" disabled><span class="btn-icon">▶</span> <span id="btn-start-label">Cargando escenario…</span></button>
+    <p class="splash-hint">Imágenes satelitales reales · Navegación libre estilo vuelo de dron</p>
+  </div>
+</div>
+
+<!-- Header -->
+<header id="topbar">
+  <div class="brand">
+    <span class="brand-icon">◑</span>
+    <div class="brand-text">
+      <span class="brand-name">AgroDesign</span>
+      <span class="brand-sub">Monte Hermoso · Navegador 3D</span>
+    </div>
+  </div>
+  <div id="scenario-switch" role="tablist" aria-label="Escenario">
+    <button id="sw-inicial" class="sw-btn active" role="tab">Paisaje Actual</button>
+    <button id="sw-multi" class="sw-btn" role="tab">Con Diseño AgroDesign</button>
+  </div>
+  <div class="topbar-right">
+    <button id="btn-panel" title="Mostrar / ocultar panel">☰</button>
+  </div>
+</header>
+
+<!-- Panel lateral -->
+<aside id="panel">
+  <div class="panel-section" id="scenario-desc">
+    <h2 id="panel-title">Paisaje Actual</h2>
+    <p id="panel-sub">Composición actual del establecimiento</p>
+  </div>
+  <div class="panel-section">
+    <h3>Unidades de paisaje</h3>
+    <ul id="legend"></ul>
+  </div>
+  <div class="panel-section" id="impact">
+    <h3>Impacto del diseño</h3>
+    <div class="impact-row">
+      <div class="impact-box">
+        <span class="impact-label">Naturaleza hoy</span>
+        <span class="impact-value" id="imp-before">–</span>
+      </div>
+      <div class="impact-arrow">→</div>
+      <div class="impact-box highlight">
+        <span class="impact-label">Con diseño</span>
+        <span class="impact-value" id="imp-after">–</span>
+      </div>
+    </div>
+    <p class="impact-note" id="imp-note"></p>
+  </div>
+  <div class="panel-footer">
+    <p>Alterná los escenarios y hacé click sobre las unidades del paisaje para ver su detalle.</p>
+  </div>
+</aside>
+
+<!-- Controles de vuelo -->
+<div id="flight-controls">
+  <button id="btn-tour" title="Vuelo de dron automático">🛸</button>
+  <button id="btn-orbit" title="Órbita">⟳</button>
+  <button id="btn-reset" title="Vista general">⌂</button>
+</div>
+<div id="tour-banner">Vuelo de dron en curso — mové el mapa para tomar el control</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
