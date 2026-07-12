@@ -90,9 +90,10 @@ html, body { height: 100%; overflow: hidden; background: var(--ad-green-dark); }
 #campo-dd { position: relative; }
 #campo-btn {
   display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
-  height: 42px; padding: 4px 30px 4px 12px; border-radius: 8px; cursor: pointer;
+  height: 42px; padding: 4px 38px 4px 16px; border-radius: 8px; cursor: pointer;
   background: rgba(0,0,0,.35); color: var(--ad-cream);
-  border: 1px solid rgba(230,185,61,.5); position: relative; min-width: 170px;
+  border: 1px solid rgba(230,185,61,.5); position: relative; min-width: 190px;
+  width: max-content;
 }
 #campo-btn:hover { background: rgba(0,0,0,.5); }
 #campo-btn .dd-tag {
@@ -207,7 +208,7 @@ html, body { height: 100%; overflow: hidden; background: var(--ad-green-dark); }
 }
 #flight-controls button:hover { background: var(--ad-green-mid); transform: scale(1.07); }
 #flight-controls button.active { background: var(--ad-gold); color: #1d1607; border-color: var(--ad-gold); }
-#btn-tour svg { display: block; }
+#btn-tour svg, #btn-reset svg { display: block; }
 
 #tour-banner {
   position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(80px);
