@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AgroDesign · Navegador 3D · Monte Hermoso</title>
+<title>AgroDesign · Navegador 3D</title>
+<link rel="icon" type="image/png" href="img/logo.png">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -14,11 +15,11 @@
   <div class="splash-bg"></div>
   <div class="splash-content">
     <div class="splash-brand">
-      <span class="brand-icon">◑</span>
+      <img class="brand-logo" src="img/logo.png" alt="AgroDesign">
       <span class="brand-name">AgroDesign</span>
       <span class="brand-sub">Diseño de Paisajes Productivos</span>
     </div>
-    <h1>Monte Hermoso</h1>
+    <h1 id="splash-campo">Monte Hermoso</h1>
     <p class="splash-tag">Recorré el campo en 3D y descubrí cómo se transforma<br>con el diseño de paisaje multifuncional</p>
     <button id="btn-start" disabled><span class="btn-icon">▶</span> <span id="btn-start-label">Cargando escenario…</span></button>
     <p class="splash-hint">Imágenes satelitales reales · Navegación libre estilo vuelo de dron</p>
@@ -28,10 +29,10 @@
 <!-- Header -->
 <header id="topbar">
   <div class="brand">
-    <span class="brand-icon">◑</span>
+    <img class="brand-logo" src="img/logo.png" alt="AgroDesign">
     <div class="brand-text">
       <span class="brand-name">AgroDesign</span>
-      <span class="brand-sub">Monte Hermoso · Navegador 3D</span>
+      <span class="brand-sub" id="brand-campo">Navegador 3D</span>
     </div>
   </div>
   <div id="scenario-switch" role="tablist" aria-label="Escenario">
@@ -39,6 +40,7 @@
     <button id="sw-multi" class="sw-btn" role="tab">Con Diseño AgroDesign</button>
   </div>
   <div class="topbar-right">
+    <select id="campo-select" title="Seleccionar campo"></select>
     <button id="btn-panel" title="Mostrar / ocultar panel">☰</button>
   </div>
 </header>
@@ -75,7 +77,16 @@
 
 <!-- Controles de vuelo -->
 <div id="flight-controls">
-  <button id="btn-tour" title="Vuelo de dron automático">🛸</button>
+  <button id="btn-tour" title="Vuelo de dron automático">
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="4.6" cy="4.6" r="2.5"/>
+      <circle cx="19.4" cy="4.6" r="2.5"/>
+      <circle cx="4.6" cy="19.4" r="2.5"/>
+      <circle cx="19.4" cy="19.4" r="2.5"/>
+      <rect x="9.4" y="9.4" width="5.2" height="5.2" rx="1.5"/>
+      <path d="M6.4 6.4l3 3M17.6 6.4l-3 3M6.4 17.6l3-3M17.6 17.6l-3-3"/>
+    </svg>
+  </button>
   <button id="btn-orbit" title="Órbita">⟳</button>
   <button id="btn-reset" title="Vista general">⌂</button>
 </div>

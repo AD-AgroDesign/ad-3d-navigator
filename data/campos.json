@@ -1,0 +1,12 @@
+{
+  "default": "monte_hermoso",
+  "campos": [
+    {
+      "id": "monte_hermoso",
+      "nombre": "Monte Hermoso",
+      "cliente": "AgroDesign",
+      "inicial": "data/monte_hermoso/inicial.geojson",
+      "multifuncional": "data/monte_hermoso/multifuncional.geojson"
+    }
+  ]
+}
