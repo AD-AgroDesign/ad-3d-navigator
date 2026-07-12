@@ -40,7 +40,17 @@
     <button id="sw-multi" class="sw-btn" role="tab">Con Diseño AgroDesign</button>
   </div>
   <div class="topbar-right">
-    <select id="campo-select" title="Seleccionar campo"></select>
+    <div id="campo-dd">
+      <button id="campo-btn">
+        <span class="dd-tag">Seleccionar</span>
+        <span id="campo-current">—</span>
+        <span class="dd-caret">▾</span>
+      </button>
+      <div id="campo-menu">
+        <div class="dd-header">Seleccionar campo</div>
+        <ul id="campo-list"></ul>
+      </div>
+    </div>
     <button id="btn-panel" title="Mostrar / ocultar panel">☰</button>
   </div>
 </header>
@@ -50,6 +60,13 @@
   <div class="panel-section" id="scenario-desc">
     <h2 id="panel-title">Paisaje Actual</h2>
     <p id="panel-sub">Composición actual del establecimiento</p>
+  </div>
+  <div class="panel-section">
+    <h3>Opacidad del diseño</h3>
+    <div class="opacity-row">
+      <input type="range" id="opacity-slider" min="20" max="100" value="100">
+      <span id="opacity-val">100%</span>
+    </div>
   </div>
   <div class="panel-section">
     <h3>Unidades de paisaje</h3>
@@ -78,13 +95,23 @@
 <!-- Controles de vuelo -->
 <div id="flight-controls">
   <button id="btn-tour" title="Vuelo de dron automático">
-    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <circle cx="4.6" cy="4.6" r="2.5"/>
-      <circle cx="19.4" cy="4.6" r="2.5"/>
-      <circle cx="4.6" cy="19.4" r="2.5"/>
-      <circle cx="19.4" cy="19.4" r="2.5"/>
-      <rect x="9.4" y="9.4" width="5.2" height="5.2" rx="1.5"/>
-      <path d="M6.4 6.4l3 3M17.6 6.4l-3 3M6.4 17.6l3-3M17.6 17.6l-3-3"/>
+    <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor" aria-hidden="true">
+      <!-- hélices -->
+      <rect x="0.6" y="4.2" width="8.2" height="1.5" rx="0.75"/>
+      <rect x="15.2" y="4.2" width="8.2" height="1.5" rx="0.75"/>
+      <!-- mástiles -->
+      <rect x="4.6" y="5.4" width="1.4" height="1.6"/>
+      <rect x="18.0" y="5.4" width="1.4" height="1.6"/>
+      <!-- motores -->
+      <rect x="3.1" y="6.8" width="4.2" height="3.4" rx="1"/>
+      <rect x="16.7" y="6.8" width="4.2" height="3.4" rx="1"/>
+      <!-- cuerpo -->
+      <path d="M7.3 8.2 C9 7.2 15 7.2 16.7 8.2 L15.4 12.2 C13.2 13.1 10.8 13.1 8.6 12.2 Z"/>
+      <!-- cámara con lente -->
+      <path fill-rule="evenodd" d="M10.1 13.2 h3.8 a0.8 0.8 0 0 1 0.8 0.8 v2.6 a0.8 0.8 0 0 1 -0.8 0.8 h-3.8 a0.8 0.8 0 0 1 -0.8 -0.8 v-2.6 a0.8 0.8 0 0 1 0.8 -0.8 Z M12 14.1 a1.15 1.15 0 1 0 0 2.3 a1.15 1.15 0 1 0 0 -2.3 Z"/>
+      <!-- patas curvas -->
+      <path d="M8.2 12.6 C7.6 14.8 6.2 16.4 4.3 17.2 L4.9 18.3 C7.3 17.3 8.9 15.3 9.5 13.1 Z"/>
+      <path d="M15.8 12.6 C16.4 14.8 17.8 16.4 19.7 17.2 L19.1 18.3 C16.7 17.3 15.1 15.3 14.5 13.1 Z"/>
     </svg>
   </button>
   <button id="btn-orbit" title="Órbita">⟳</button>
@@ -95,6 +122,7 @@
 <div id="map"></div>
 
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

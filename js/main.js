@@ -1,51 +1,74 @@
 /* ============================================================
    AgroDesign 3D Navigator
    Mapa 3D navegable estilo vuelo de dron con conmutación entre
-   paisaje actual y diseño multifuncional. Multi-campo vía
-   data/campos.json (?campo=id).
+   paisaje actual y diseño multifuncional. Árboles low-poly
+   instanciados en GPU (Three.js). Multi-campo vía data/campos.json.
    ============================================================ */
 "use strict";
 
 /* ---------- Configuración de clases de paisaje ---------- */
 const CLASS_META = {
-  "agri":        { label: "Agrícola Secano",            legend: "#d9c98a" },
-  "zona1":       { label: "Agrícola Secano · Zona 1",   legend: "#2e7d32" },
-  "zona2":       { label: "Agrícola Secano · Zona 2",   legend: "#66bb6a" },
-  "zona3":       { label: "Agrícola Secano · Zona 3",   legend: "#9ccc65" },
-  "parche-le":   { label: "Parche Leñoso",              legend: "#1b4020" },
-  "corr-le":     { label: "Corredor Leñoso",            legend: "#2f5d33" },
-  "parche-herb": { label: "Parche Herbáceo",            legend: "#a9b284" },
-  "corr-herb":   { label: "Corredor Herbáceo",          legend: "#b7bfa0" },
-  "otros":       { label: "Otros",                      legend: "#9e9e9e" }
+  "agri":          { label: "Agrícola Secano",            legend: "#d9c98a" },
+  "zona1":         { label: "Agrícola Secano · Zona 1",   legend: "#2e7d32" },
+  "zona2":         { label: "Agrícola Secano · Zona 2",   legend: "#66bb6a" },
+  "zona3":         { label: "Agrícola Secano · Zona 3",   legend: "#9ccc65" },
+  "parche-le":     { label: "Parche Leñoso",              legend: "#1b4020" },
+  "corr-le":       { label: "Corredor Leñoso",            legend: "#2f5d33" },
+  "parche-herb":   { label: "Parche Herbáceo",            legend: "#8a9c66" },
+  "corr-herb":     { label: "Corredor Herbáceo",          legend: "#98a878" },
+  "bajo":          { label: "Bajo en Recuperación",       legend: "#7c9a80" },
+  "instalaciones": { label: "Instalaciones",              legend: "#b8b3a4" },
+  "camino":        { label: "Caminos",                    legend: "#c9bd9e" },
+  "otros":         { label: "Otros",                      legend: "#9e9e9e" }
 };
+/* Orden canónico para leyendas (se muestran solo las clases presentes) */
+const CLASS_ORDER = ["agri", "zona1", "zona2", "zona3", "parche-le", "parche-herb",
+  "corr-le", "corr-herb", "bajo", "instalaciones", "camino", "otros"];
 const NATURE_CLASSES = ["parche-le", "corr-le", "parche-herb", "corr-herb"];
 const WOODY_CLASSES = ["parche-le", "corr-le"];
-const HERB_CLASSES = ["parche-herb", "corr-herb"];
+const HERB_LIKE_CLASSES = ["parche-herb", "corr-herb", "bajo"];
+const MISC_CLASSES = ["otros", "instalaciones", "camino"];
 
-function classInicial(props) {
+/* Clasificador universal: tolera las variantes de esquema de cada campo
+   (Unidad/UNIDAD, nombres largos, con acentos, o solo códigos RASTER) */
+function classify(props) {
+  const raw = (props.Unidad || props.UNIDAD || props.unidad || "")
+    .toString().toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (raw && raw !== "no aplica") {
+    if (/otros/.test(raw)) return "otros";
+    if (/bajo/.test(raw)) return "bajo";
+    if (/instalacion/.test(raw)) return "instalaciones";
+    if (/camino/.test(raw)) return "camino";
+    if (/parche.*herb/.test(raw)) return "parche-herb";
+    if (/corr.*herb/.test(raw)) return "corr-herb";
+    if (/parche/.test(raw)) return "parche-le";
+    if (/corr/.test(raw)) return "corr-le";
+    if (/(zona\s*-?1|z1)/.test(raw)) return "zona1";
+    if (/(zona\s*-?2|z2)/.test(raw)) return "zona2";
+    if (/(zona\s*-?3|z3)/.test(raw)) return "zona3";
+    if (/(agricola|ag-secano|secano)/.test(raw)) return "agri";
+  }
   switch (props.RASTER) {
     case 11: return "parche-le";
     case 12: return "corr-le";
     case 21: return "parche-herb";
+    case 22: return "corr-herb";
     case 31: return "agri";
+    case 311: return "zona1";
+    case 312: return "zona2";
+    case 313: return "zona3";
+    case 41: return "instalaciones";
+    case 42: return "camino";
     default: return "otros";
   }
 }
-function classMulti(props) {
-  const u = props.Unidad || "";
-  if (u === "otros-parches") return "otros";
-  if (CLASS_META[u]) return u;
-  return "otros";
-}
 
-/* Paleta de monte de espinal: canopia (abajo) y corona (arriba, más luminosa) */
-const CANOPY_COLORS = ["#1e3d1a", "#2a4f22", "#33602a", "#3e6d2f", "#4a7434", "#5c763a"];
-const MID_COLORS    = ["#254a1f", "#316027", "#3c6c2f", "#487a35", "#54823b", "#688241"];
-const CROWN_COLORS  = ["#316026", "#3e7030", "#4a8038", "#578e40", "#659647", "#7c964f"];
-/* Arbustos del pastizal florecido (tonos salvia/lavanda de la foto de dron) */
-const SHRUB_COLORS  = ["#7d8a5e", "#8a9370", "#9aa285", "#a2a3b0"];
+/* Paleta de copas de monte de espinal */
+const CROWN_PALETTE = [0x2a4f22, 0x33602a, 0x3e6d2f, 0x4a7434, 0x567c38, 0x6a7f3e];
+const TRUNK_COLOR = 0x5b4632;
 const WOODY_BASE = { color: "#2e5026", height: 1.2, opacity: 0.45 };
-const HERB_HEIGHT = 0.9;
+const HERB_HEIGHT = 0.6;
 
 /* ---------- Utilidades geométricas ---------- */
 function mulberry32(seed) {
@@ -102,8 +125,7 @@ function featureCentroid(feature) {
   return [sx / best.length, sy / best.length];
 }
 
-/* Polígono orgánico lobulado alrededor de un punto (radio en metros) */
-function blobRing(lon, lat, rMeters, rng, verts = 8, jitter = 0.55) {
+function blobRing(lon, lat, rMeters, rng, verts = 7, jitter = 0.5) {
   const kx = 111320 * Math.cos((lat * Math.PI) / 180), ky = 110574;
   const ring = [];
   const rot = rng() * Math.PI * 2;
@@ -116,13 +138,12 @@ function blobRing(lon, lat, rMeters, rng, verts = 8, jitter = 0.55) {
   return [ring];
 }
 
-/* Desplaza un anillo en metros (para sombras) */
 function offsetRing(polygon, dxM, dyM, lat) {
   const kx = 111320 * Math.cos((lat * Math.PI) / 180), ky = 110574;
   return [polygon[0].map(([x, y]) => [x + dxM / kx, y + dyM / ky])];
 }
 
-/* Scatter determinístico de puntos dentro de los polígonos de ciertas clases */
+/* Scatter determinístico dentro de los polígonos de ciertas clases */
 function scatterInClasses(fc, classes, seed, densityPerHa, maxTotal, minPerPoly) {
   const rng = mulberry32(seed);
   const polys = [];
@@ -152,55 +173,26 @@ function scatterInClasses(fc, classes, seed, densityPerHa, maxTotal, minPerPoly)
   return { points, rng };
 }
 
-/* ---------- Generación procedural de vegetación ---------- */
-/* Árboles: cada uno = canopia ancha + corona alta (extrusiones) + sombra al piso */
-function generateTrees(fc, seed) {
+/* Genera atributos de árboles + sombras drapeadas (GeoJSON) */
+function generateTreeData(fc, seed) {
   const { points, rng } = scatterInClasses(fc, WOODY_CLASSES, seed, 55, 4200, 3);
-  const trees = [], shadows = [];
-  // tres niveles apilados para una silueta de copa redondeada
-  const TIERS = [
-    { rF: 0.85, b0: 0.18, b1: 0.55, k: "canopy", verts: 10 },
-    { rF: 0.66, b0: 0.45, b1: 0.82, k: "mid",    verts: 9 },
-    { rF: 0.40, b0: 0.72, b1: 1.00, k: "crown",  verts: 8 }
-  ];
+  const trees = [], shadowFeats = [];
   for (const [lon, lat] of points) {
-    const r = 3.4 + rng() * 3.4;               // radio de copa 3.4–6.8 m
-    const h = 5 + rng() * 9;                   // altura total 5–14 m
-    const c = Math.floor(rng() * CANOPY_COLORS.length);
-    for (const t of TIERS) {
-      trees.push({
-        type: "Feature",
-        properties: { b: +(h * t.b0).toFixed(1), h: +(h * t.b1).toFixed(1), c, k: t.k },
-        geometry: { type: "Polygon", coordinates: blobRing(lon, lat, r * t.rF, rng, t.verts, 0.5) }
-      });
-    }
-    // sombra proyectada (sol NO -> sombra SE)
-    shadows.push({
+    const h = 5 + rng() * 9;                    // altura total 5–14 m
+    const r = h * (0.32 + rng() * 0.2);         // radio de copa proporcional
+    trees.push({
+      lon, lat, h, r,
+      c: Math.floor(rng() * CROWN_PALETTE.length),
+      lobe: rng() < 0.45,
+      j: rng()
+    });
+    shadowFeats.push({
       type: "Feature",
       properties: {},
-      geometry: { type: "Polygon", coordinates: offsetRing(blobRing(lon, lat, r * 1.2, rng, 7, 0.4), 2.4, -1.8, lat) }
+      geometry: { type: "Polygon", coordinates: offsetRing(blobRing(lon, lat, r * 1.15, rng, 7, 0.4), 2.4, -1.8, lat) }
     });
   }
-  return {
-    trees: { type: "FeatureCollection", features: trees },
-    shadows: { type: "FeatureCollection", features: shadows }
-  };
-}
-
-/* Arbustos y matas florecidas dentro de parches/corredores herbáceos */
-function generateShrubs(fc, seed) {
-  const { points, rng } = scatterInClasses(fc, HERB_CLASSES, seed, 14, 3200, 2);
-  const shrubs = [];
-  for (const [lon, lat] of points) {
-    const r = 1.4 + rng() * 2.4;
-    const h = 0.8 + rng() * 1.5;
-    shrubs.push({
-      type: "Feature",
-      properties: { h: +h.toFixed(1), c: Math.floor(rng() * SHRUB_COLORS.length) },
-      geometry: { type: "Polygon", coordinates: blobRing(lon, lat, r, rng, 7, 0.6) }
-    });
-  }
-  return { type: "FeatureCollection", features: shrubs };
+  return { trees, shadows: { type: "FeatureCollection", features: shadowFeats } };
 }
 
 /* ---------- Estado global ---------- */
@@ -211,9 +203,11 @@ const state = {
   scenario: "inicial",
   campo: null,
   data: { inicial: null, multi: null },
+  veg: { inicial: null, multi: null },
   stats: { inicial: {}, multi: {} },
   bbox: null,
-  tour: { running: false, timer: null },
+  designOpacity: 1,
+  tour: { running: false, timer: null, route: [], step: 0 },
   orbit: { running: false, raf: null },
   growth: { inicial: 1, multi: 0 },
   anim: null
@@ -221,7 +215,8 @@ const state = {
 
 let HOME_VIEW = { center: [-63.7885, -33.865], zoom: 12.6, pitch: 58, bearing: 15 };
 
-/* ---------- Estilo base del mapa ---------- */
+/* ---------- Estilo base del mapa (sin terreno: llanura, evita
+   artefactos de extrusiones cortadas en pendientes) ---------- */
 const mapStyle = {
   version: 8,
   glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
@@ -232,13 +227,6 @@ const mapStyle = {
       tileSize: 256,
       maxzoom: 18,
       attribution: "Imagen satelital © Esri, Maxar, Earthstar Geographics | AgroDesign"
-    },
-    terrain: {
-      type: "raster-dem",
-      tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
-      tileSize: 256,
-      encoding: "terrarium",
-      maxzoom: 12
     }
   },
   layers: [{ id: "satellite", type: "raster", source: "esri" }],
@@ -249,8 +237,7 @@ const mapStyle = {
     "sky-horizon-blend": 0.6,
     "horizon-fog-blend": 0.65,
     "fog-ground-blend": 0.85
-  },
-  terrain: { source: "terrain", exaggeration: 1.5 }
+  }
 };
 
 const map = new maplibregl.Map({
@@ -271,26 +258,158 @@ map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-
 map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
 map.touchZoomRotate.enableRotation();
 
+/* ---------- Capa custom Three.js: árboles low-poly instanciados ---------- */
+const vegLayer = {
+  id: "veg-3d",
+  type: "custom",
+  renderingMode: "3d",
+  groups: {},
+
+  onAdd(mapInstance, gl) {
+    this.camera = new THREE.Camera();
+    this.scene = new THREE.Scene();
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const sun = new THREE.DirectionalLight(0xfff3da, 0.85);
+    sun.position.set(-0.5, 1, -0.7);  // sol NO (sombras GeoJSON al SE)
+    this.scene.add(sun);
+
+    const origin = maplibregl.MercatorCoordinate.fromLngLat(HOME_VIEW.center, 0);
+    this.scale = origin.meterInMercatorCoordinateUnits();
+    // escena en metros: X=este, Y=arriba, Z=sur
+    this.l = new THREE.Matrix4()
+      .makeTranslation(origin.x, origin.y, 0)
+      .scale(new THREE.Vector3(this.scale, -this.scale, this.scale))
+      .multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
+    this.origin = origin;
+
+    for (const key of ["inicial", "multi"]) {
+      const g = this.buildGroup(state.veg[key].trees);
+      g.group.scale.y = state.growth[key] || 0.0001;
+      this.setGroupOpacity(g, key === "inicial" ? 1 : 0);
+      this.scene.add(g.group);
+      this.groups[key] = g;
+    }
+
+    this.renderer = new THREE.WebGLRenderer({ canvas: mapInstance.getCanvas(), context: gl });
+    this.renderer.autoClear = false;
+  },
+
+  buildGroup(trees) {
+    const group = new THREE.Group();
+    const nLobes = trees.reduce((s, t) => s + (t.lobe ? 1 : 0), 0);
+
+    const trunkGeo = new THREE.CylinderGeometry(0.7, 1, 1, 5);
+    trunkGeo.translate(0, 0.5, 0); // base del tronco en y=0
+    const crownGeo = new THREE.IcosahedronGeometry(1, 1);
+
+    const trunkMat = new THREE.MeshPhongMaterial({ color: 0xffffff, flatShading: true, shininess: 0, transparent: true });
+    const crownMat = new THREE.MeshPhongMaterial({ color: 0xffffff, flatShading: true, shininess: 0, transparent: true });
+
+    const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, trees.length);
+    const crowns = new THREE.InstancedMesh(crownGeo, crownMat, trees.length + nLobes);
+
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const eul = new THREE.Euler();
+    const col = new THREE.Color();
+    const origin = this.origin, s = this.scale;
+
+    let ci = 0;
+    trees.forEach((t, i) => {
+      // posición exacta en Mercator -> metros de escena (X este, Z sur)
+      const mc = maplibregl.MercatorCoordinate.fromLngLat([t.lon, t.lat], 0);
+      const x = (mc.x - origin.x) / s;
+      const z = (mc.y - origin.y) / s;
+      const trunkH = t.h * 0.32;
+      const trunkR = 0.12 + t.h * 0.035;
+
+      m.compose(
+        new THREE.Vector3(x, 0, z),
+        q.identity(),
+        new THREE.Vector3(trunkR, trunkH, trunkR)
+      );
+      trunks.setMatrixAt(i, m);
+      col.setHex(TRUNK_COLOR).offsetHSL(0, 0, (t.j - 0.5) * 0.08);
+      trunks.setColorAt(i, col);
+
+      const sy = t.h * 0.42;
+      const cy = trunkH + sy * 0.82;
+      eul.set(0, t.j * Math.PI * 2, 0);
+      m.compose(
+        new THREE.Vector3(x, cy, z),
+        q.setFromEuler(eul),
+        new THREE.Vector3(t.r, sy, t.r * (0.9 + t.j * 0.2))
+      );
+      crowns.setMatrixAt(ci, m);
+      col.setHex(CROWN_PALETTE[t.c]).offsetHSL(0, 0, (t.j - 0.5) * 0.07);
+      crowns.setColorAt(ci, col);
+      ci++;
+
+      if (t.lobe) {
+        const lr = t.r * 0.6;
+        m.compose(
+          new THREE.Vector3(x + (t.j - 0.5) * t.r * 1.4, cy + sy * 0.35, z + (((t.j * 7) % 1) - 0.5) * t.r * 1.4),
+          q.identity(),
+          new THREE.Vector3(lr, lr * 0.9, lr)
+        );
+        crowns.setMatrixAt(ci, m);
+        col.setHex(CROWN_PALETTE[(t.c + 1) % CROWN_PALETTE.length]).offsetHSL(0, 0, (t.j - 0.5) * 0.07);
+        crowns.setColorAt(ci, col);
+        ci++;
+      }
+    });
+    trunks.instanceMatrix.needsUpdate = true;
+    crowns.instanceMatrix.needsUpdate = true;
+    if (trunks.instanceColor) trunks.instanceColor.needsUpdate = true;
+    if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true;
+
+    group.add(trunks, crowns);
+    return { group, trunkMat, crownMat };
+  },
+
+  setGroupOpacity(g, o) {
+    g.trunkMat.opacity = o;
+    g.crownMat.opacity = o;
+    g.group.visible = o > 0.02;
+  },
+
+  setOpacity(key, o) {
+    if (this.groups[key]) this.setGroupOpacity(this.groups[key], o);
+  },
+
+  setGrowth(key, t) {
+    if (this.groups[key]) this.groups[key].group.scale.y = Math.max(t, 0.0001);
+  },
+
+  render(gl, matrix) {
+    this.camera.projectionMatrix = new THREE.Matrix4().fromArray(matrix).multiply(this.l);
+    this.renderer.resetState();
+    this.renderer.render(this.scene, this.camera);
+  }
+};
+
 /* ---------- Carga de configuración y datos ---------- */
 async function loadCampos() {
   const cfg = await fetch("data/campos.json").then(r => r.json());
   const wanted = params.get("campo") || cfg.default;
   state.campo = cfg.campos.find(c => c.id === wanted) || cfg.campos[0];
 
-  const sel = document.getElementById("campo-select");
-  sel.innerHTML = "";
+  const list = document.getElementById("campo-list");
+  list.innerHTML = "";
+  const ddLabel = c => (c.cliente && c.cliente !== "AgroDesign") ? `${c.cliente} — ${c.nombre}` : c.nombre;
   for (const c of cfg.campos) {
-    const opt = document.createElement("option");
-    opt.value = c.id; opt.textContent = c.nombre;
-    if (c.id === state.campo.id) opt.selected = true;
-    sel.appendChild(opt);
+    const li = document.createElement("li");
+    li.dataset.id = c.id;
+    li.innerHTML = `<span class="dot"></span><span class="dd-name">${ddLabel(c)}</span><span class="check">✓</span>`;
+    if (c.id === state.campo.id) li.classList.add("selected");
+    li.addEventListener("click", () => {
+      const q = new URLSearchParams(location.search);
+      q.set("campo", c.id);
+      location.search = q.toString();
+    });
+    list.appendChild(li);
   }
-  sel.addEventListener("change", () => {
-    const q = new URLSearchParams(location.search);
-    q.set("campo", sel.value);
-    location.search = q.toString();
-  });
-
+  document.getElementById("campo-current").textContent = ddLabel(state.campo);
   document.getElementById("brand-campo").textContent = `${state.campo.nombre} · Navegador 3D`;
   document.getElementById("splash-campo").textContent = state.campo.nombre;
   document.title = `AgroDesign · Navegador 3D · ${state.campo.nombre}`;
@@ -301,12 +420,24 @@ async function loadData() {
     fetch(state.campo.inicial).then(r => r.json()),
     fetch(state.campo.multifuncional).then(r => r.json())
   ]);
-  for (const f of ini.features) f.properties._cls = classInicial(f.properties);
-  for (const f of multi.features) f.properties._cls = classMulti(f.properties);
+  for (const fc of [ini, multi]) {
+    for (const f of fc.features) {
+      f.properties._cls = classify(f.properties);
+      // superficie: del atributo si existe, si no calculada de la geometría
+      let sup = f.properties.Sup ?? f.properties.SUP ?? f.properties.sup;
+      if (sup == null || sup === 0) {
+        sup = f.geometry.coordinates.reduce((s, poly) =>
+          s + ringAreaHa(poly[0], poly[0][0][1]), 0);
+      }
+      f.properties._sup = sup;
+    }
+  }
   state.data.inicial = ini;
   state.data.multi = multi;
   computeStats();
   computeHomeView();
+  state.veg.inicial = generateTreeData(ini, 20260711);
+  state.veg.multi = generateTreeData(multi, 47110226);
 }
 
 function computeStats() {
@@ -314,13 +445,12 @@ function computeStats() {
     const sums = {};
     for (const f of fc.features) {
       const cls = f.properties._cls;
-      sums[cls] = (sums[cls] || 0) + (f.properties.Sup || 0);
+      sums[cls] = (sums[cls] || 0) + (f.properties._sup || 0);
     }
     state.stats[key] = sums;
   }
 }
 
-/* Vista inicial y límites derivados del bbox de los datos del campo */
 function computeHomeView() {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const fc of [state.data.inicial, state.data.multi]) {
@@ -345,27 +475,12 @@ function natureHa(key) {
 }
 
 const clsFilter = (...classes) => ["in", ["get", "_cls"], ["literal", classes]];
-const colorMatch = (palette) => {
-  const m = ["match", ["get", "c"]];
-  palette.forEach((col, i) => { if (i < palette.length - 1) m.push(i, col); });
-  m.push(palette[palette.length - 1]);
-  return m;
-};
 
 function addScenarioLayers() {
-  const ini = state.data.inicial, multi = state.data.multi;
-
-  map.addSource("ini", { type: "geojson", data: ini });
-  map.addSource("multi", { type: "geojson", data: multi });
-
-  const iniVeg = generateTrees(ini, 20260711);
-  const multiVeg = generateTrees(multi, 47110226);
-  map.addSource("ini-trees", { type: "geojson", data: iniVeg.trees });
-  map.addSource("ini-shadows", { type: "geojson", data: iniVeg.shadows });
-  map.addSource("multi-trees", { type: "geojson", data: multiVeg.trees });
-  map.addSource("multi-shadows", { type: "geojson", data: multiVeg.shadows });
-  map.addSource("ini-shrubs", { type: "geojson", data: generateShrubs(ini, 11223344) });
-  map.addSource("multi-shrubs", { type: "geojson", data: generateShrubs(multi, 55667788) });
+  map.addSource("ini", { type: "geojson", data: state.data.inicial });
+  map.addSource("multi", { type: "geojson", data: state.data.multi });
+  map.addSource("ini-shadows", { type: "geojson", data: state.veg.inicial.shadows });
+  map.addSource("multi-shadows", { type: "geojson", data: state.veg.multi.shadows });
 
   for (const p of ["ini", "multi"]) {
     const isMulti = p === "multi";
@@ -399,49 +514,37 @@ function addScenarioLayers() {
       });
     }
 
-    // "Otros" (cascos, bajos): satélite visible, contorno punteado discreto
     map.addLayer({
       id: `${p}-otros-fill`, type: "fill", source: src,
-      filter: clsFilter("otros"),
+      filter: clsFilter(...MISC_CLASSES),
       paint: { "fill-color": "#c9c9b8", "fill-opacity": 0 }
     });
     map.addLayer({
       id: `${p}-otros-line`, type: "line", source: src,
-      filter: clsFilter("otros"),
+      filter: clsFilter(...MISC_CLASSES),
       paint: { "line-color": "#e8e6d5", "line-width": 1.2, "line-opacity": 0, "line-dasharray": [2.5, 2] }
     });
 
-    // Pastizal: color salvia de lejos, textura fotográfica real de cerca
+    // Pastizal: color base + textura uniforme de grano fino
     map.addLayer({
       id: `${p}-herb-ext`, type: "fill-extrusion", source: src,
-      filter: clsFilter("parche-herb", "corr-herb"),
+      filter: clsFilter(...HERB_LIKE_CLASSES),
       paint: {
-        "fill-extrusion-color": ["match", ["get", "_cls"], "corr-herb", "#a3b183", "#96a873"],
+        "fill-extrusion-color": ["match", ["get", "_cls"], "corr-herb", "#75885a", "bajo", "#6f8a72", "#6d8050"],
         "fill-extrusion-height": 0,
         "fill-extrusion-opacity": 0
       }
     });
     map.addLayer({
       id: `${p}-herb-pattern`, type: "fill-extrusion", source: src,
-      filter: clsFilter("parche-herb", "corr-herb"),
+      filter: clsFilter(...HERB_LIKE_CLASSES),
       paint: {
         "fill-extrusion-pattern": "pastizal",
         "fill-extrusion-height": 0,
         "fill-extrusion-opacity": 0
       }
     });
-    // Matas y arbustos florecidos sobre el pastizal
-    map.addLayer({
-      id: `${p}-shrubs`, type: "fill-extrusion", source: `${p}-shrubs`,
-      paint: {
-        "fill-extrusion-color": colorMatch(SHRUB_COLORS),
-        "fill-extrusion-height": 0,
-        "fill-extrusion-opacity": 0,
-        "fill-extrusion-vertical-gradient": true
-      }
-    });
 
-    // Piso del monte + sombras + árboles en dos niveles
     map.addLayer({
       id: `${p}-woody-base`, type: "fill-extrusion", source: src,
       filter: clsFilter("parche-le", "corr-le"),
@@ -451,72 +554,47 @@ function addScenarioLayers() {
       id: `${p}-tree-shadows`, type: "fill", source: `${p}-shadows`,
       paint: { "fill-color": "#0c1c08", "fill-opacity": 0 }
     });
-    map.addLayer({
-      id: `${p}-trees`, type: "fill-extrusion", source: `${p}-trees`,
-      paint: {
-        "fill-extrusion-color": ["case",
-          ["==", ["get", "k"], "crown"], colorMatch(CROWN_COLORS),
-          ["==", ["get", "k"], "mid"], colorMatch(MID_COLORS),
-          colorMatch(CANOPY_COLORS)],
-        "fill-extrusion-height": 0,
-        "fill-extrusion-base": 0,
-        "fill-extrusion-opacity": 0,
-        "fill-extrusion-vertical-gradient": true
-      }
-    });
   }
 
+  map.addLayer(vegLayer);
   setupInteractivity();
 }
 
-/* Capas por escenario con su opacidad objetivo cuando el escenario está activo */
 const SCENARIO_LAYERS = {
   inicial: [
     { id: "ini-agri-line", prop: "line-opacity", on: 0.55 },
     { id: "ini-otros-fill", prop: "fill-opacity", on: 0.06 },
     { id: "ini-otros-line", prop: "line-opacity", on: 0.5 },
-    { id: "ini-herb-ext", prop: "fill-extrusion-opacity", on: 0.92 },
-    { id: "ini-herb-pattern", prop: "fill-extrusion-opacity", on: 0.6, ramp: [13.8, 15.0] },
-    { id: "ini-shrubs", prop: "fill-extrusion-opacity", on: 0.95 },
+    { id: "ini-herb-ext", prop: "fill-extrusion-opacity", on: 0.9 },
+    { id: "ini-herb-pattern", prop: "fill-extrusion-opacity", on: 0.75 },
     { id: "ini-woody-base", prop: "fill-extrusion-opacity", on: WOODY_BASE.opacity },
-    { id: "ini-tree-shadows", prop: "fill-opacity", on: 0.28 },
-    { id: "ini-trees", prop: "fill-extrusion-opacity", on: 0.96 }
+    { id: "ini-tree-shadows", prop: "fill-opacity", on: 0.28 }
   ],
   multi: [
     { id: "multi-zona-fill", prop: "fill-opacity", on: 0.18 },
     { id: "multi-zona-line", prop: "line-opacity", on: 0.85 },
     { id: "multi-otros-fill", prop: "fill-opacity", on: 0.06 },
     { id: "multi-otros-line", prop: "line-opacity", on: 0.5 },
-    { id: "multi-herb-ext", prop: "fill-extrusion-opacity", on: 0.92 },
-    { id: "multi-herb-pattern", prop: "fill-extrusion-opacity", on: 0.6, ramp: [13.8, 15.0] },
-    { id: "multi-shrubs", prop: "fill-extrusion-opacity", on: 0.95 },
+    { id: "multi-herb-ext", prop: "fill-extrusion-opacity", on: 0.9 },
+    { id: "multi-herb-pattern", prop: "fill-extrusion-opacity", on: 0.75 },
     { id: "multi-woody-base", prop: "fill-extrusion-opacity", on: WOODY_BASE.opacity },
-    { id: "multi-tree-shadows", prop: "fill-opacity", on: 0.28 },
-    { id: "multi-trees", prop: "fill-extrusion-opacity", on: 0.96 }
+    { id: "multi-tree-shadows", prop: "fill-opacity", on: 0.28 }
   ]
 };
 
-/* Crecimiento 0..1 sobre las capas extruidas (los árboles "crecen") */
 function applyGrowth(key, t) {
   state.growth[key] = t;
   const p = key === "inicial" ? "ini" : "multi";
-  map.setPaintProperty(`${p}-trees`, "fill-extrusion-height", ["*", ["get", "h"], t]);
-  map.setPaintProperty(`${p}-trees`, "fill-extrusion-base", ["*", ["get", "b"], t]);
-  map.setPaintProperty(`${p}-shrubs`, "fill-extrusion-height", ["*", ["get", "h"], t]);
   map.setPaintProperty(`${p}-woody-base`, "fill-extrusion-height", WOODY_BASE.height * t);
   map.setPaintProperty(`${p}-herb-ext`, "fill-extrusion-height", HERB_HEIGHT * t);
-  // levemente más alta para dibujarse por encima de la capa de color
-  map.setPaintProperty(`${p}-herb-pattern`, "fill-extrusion-height", (HERB_HEIGHT + 0.06) * t);
+  map.setPaintProperty(`${p}-herb-pattern`, "fill-extrusion-height", (HERB_HEIGHT + 0.05) * t);
+  vegLayer.setGrowth(key, t);
 }
 
 function applyOpacity(key, t) {
-  for (const l of SCENARIO_LAYERS[key]) {
-    const v = l.on * t;
-    // ramp: la capa recién aparece al acercarse (crossfade por zoom)
-    map.setPaintProperty(l.id, l.prop, l.ramp
-      ? ["interpolate", ["linear"], ["zoom"], l.ramp[0], 0, l.ramp[1], v]
-      : v);
-  }
+  const f = t * state.designOpacity;
+  for (const l of SCENARIO_LAYERS[key]) map.setPaintProperty(l.id, l.prop, l.on * f);
+  vegLayer.setOpacity(key, f);
 }
 
 const easeOutCubic = x => 1 - Math.pow(1 - x, 3);
@@ -553,12 +631,7 @@ function setScenario(next, animate = true) {
   state.anim = requestAnimationFrame(frame);
 }
 
-/* ---------- Panel: leyenda y estadísticas ---------- */
-const LEGEND_ORDER = {
-  inicial: ["agri", "parche-le", "parche-herb", "corr-le", "otros"],
-  multi: ["zona1", "zona2", "zona3", "parche-le", "parche-herb", "corr-le", "corr-herb", "otros"]
-};
-
+/* ---------- Panel ---------- */
 function fmtHa(v) {
   return v.toLocaleString("es-AR", { maximumFractionDigits: 1, minimumFractionDigits: 1 }) + " ha";
 }
@@ -572,7 +645,7 @@ function updatePanel() {
 
   const legend = document.getElementById("legend");
   legend.innerHTML = "";
-  for (const cls of LEGEND_ORDER[key]) {
+  for (const cls of CLASS_ORDER) {
     const ha = state.stats[key][cls];
     if (!ha) continue;
     const li = document.createElement("li");
@@ -588,11 +661,11 @@ function updatePanel() {
     `El diseño multiplica la superficie destinada a biodiversidad (+${pct}%), conectando el paisaje con corredores biológicos sin resignar la matriz productiva.`;
 }
 
-/* ---------- Interactividad: popups ---------- */
+/* ---------- Interactividad ---------- */
 function setupInteractivity() {
   const CLICKABLE = {
-    inicial: ["ini-trees", "ini-woody-base", "ini-herb-ext", "ini-otros-fill"],
-    multi: ["multi-trees", "multi-woody-base", "multi-herb-ext", "multi-zona-fill", "multi-otros-fill"]
+    inicial: ["ini-woody-base", "ini-herb-ext", "ini-otros-fill"],
+    multi: ["multi-woody-base", "multi-herb-ext", "multi-zona-fill", "multi-otros-fill"]
   };
 
   map.on("click", e => {
@@ -609,13 +682,13 @@ function setupInteractivity() {
     if (!feats.length) return;
     const p = feats[0].properties;
     const meta = CLASS_META[p._cls] || CLASS_META.otros;
-    const elemento = p.elementro || p.Elemento || "";
+    const elemento = p.elementro || p.Elemento || p.ELEMENTO || "";
     new maplibregl.Popup({ closeButton: true, maxWidth: "260px" })
       .setLngLat(e.lngLat)
       .setHTML(`
         <div class="popup-title">${meta.label}</div>
         <div class="popup-sub">${elemento ? "Elemento: " + elemento : (state.scenario === "inicial" ? "Paisaje actual" : "Diseño propuesto")}</div>
-        <div class="popup-ha">Superficie: <b>${fmtHa(p.Sup || 0)}</b></div>`)
+        <div class="popup-ha">Superficie: <b>${fmtHa(p._sup || 0)}</b></div>`)
       .addTo(map);
   });
 
@@ -640,9 +713,8 @@ function buildTourWaypoints() {
   const multi = state.data.multi;
   const byArea = cls => multi.features
     .filter(f => f.properties._cls === cls)
-    .sort((a, b) => (b.properties.Sup || 0) - (a.properties.Sup || 0));
+    .sort((a, b) => (b.properties._sup || 0) - (a.properties._sup || 0));
 
-  // pool: corredores y parches más relevantes, en orden aleatorio por corrida
   const corridors = shuffled(byArea("corr-herb").concat(byArea("corr-le")).slice(0, 6)).slice(0, 2);
   const patches = shuffled(byArea("parche-le").slice(0, 5)).slice(0, 2);
   const rnd = (a, b) => a + Math.random() * (b - a);
@@ -665,7 +737,7 @@ function buildTourWaypoints() {
 function startTour() {
   stopOrbit();
   state.tour.running = true;
-  state.tour.route = buildTourWaypoints();  // recorrido nuevo en cada vuelo
+  state.tour.route = buildTourWaypoints();
   state.tour.step = 0;
   document.getElementById("btn-tour").classList.add("active");
   document.getElementById("tour-banner").classList.add("visible");
@@ -732,6 +804,22 @@ document.getElementById("btn-start").addEventListener("click", () => {
   document.getElementById("splash").classList.add("hidden");
   map.flyTo({ ...HOME_VIEW, duration: 5000, essential: true });
   setTimeout(startTour, 5200);
+});
+
+/* Dropdown de campos */
+const campoDd = document.getElementById("campo-dd");
+document.getElementById("campo-btn").addEventListener("click", e => {
+  e.stopPropagation();
+  campoDd.classList.toggle("open");
+});
+document.addEventListener("click", () => campoDd.classList.remove("open"));
+
+/* Slider de opacidad del diseño */
+const opSlider = document.getElementById("opacity-slider");
+opSlider.addEventListener("input", () => {
+  state.designOpacity = opSlider.value / 100;
+  document.getElementById("opacity-val").textContent = `${opSlider.value}%`;
+  applyOpacity(state.scenario, 1);
 });
 
 if (window.matchMedia("(max-width: 760px)").matches) {

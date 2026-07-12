@@ -7,6 +7,20 @@
       "cliente": "AgroDesign",
       "inicial": "data/monte_hermoso/inicial.geojson",
       "multifuncional": "data/monte_hermoso/multifuncional.geojson"
+    },
+    {
+      "id": "silesia",
+      "nombre": "Silesia",
+      "cliente": "El Parque Papas",
+      "inicial": "data/silesia/inicial.geojson",
+      "multifuncional": "data/silesia/multifuncional.geojson"
+    },
+    {
+      "id": "carmen",
+      "nombre": "Carmen",
+      "cliente": "AgroDesign",
+      "inicial": "data/carmen/inicial.geojson",
+      "multifuncional": "data/carmen/multifuncional.geojson"
     }
   ]
 }
