@@ -15,7 +15,7 @@ const CLASS_META = {
   "parche-le":     { label: "Parche Leñoso",              legend: "#1b4020" },
   "corr-le":       { label: "Corredor Leñoso",            legend: "#2f5d33" },
   "parche-herb":   { label: "Parche Herbáceo",            legend: "#8a9c66" },
-  "corr-herb":     { label: "Corredor Herbáceo",          legend: "#98a878" },
+  "corr-herb":     { label: "Corredor Herbáceo",          legend: "#a68b56" },
   "bajo":          { label: "Bajo en Recuperación",       legend: "#7c9a80" },
   "instalaciones": { label: "Instalaciones",              legend: "#b8b3a4" },
   "camino":        { label: "Caminos",                    legend: "#c9bd9e" },
@@ -547,7 +547,7 @@ function addScenarioLayers() {
       id: `${p}-herb-ext`, type: "fill-extrusion", source: src,
       filter: clsFilter(...HERB_LIKE_CLASSES),
       paint: {
-        "fill-extrusion-color": ["match", ["get", "_cls"], "corr-herb", "#75885a", "bajo", "#6f8a72", "#6d8050"],
+        "fill-extrusion-color": ["match", ["get", "_cls"], "corr-herb", "#8a7a4c", "bajo", "#6f8a72", "#6d8050"],
         "fill-extrusion-height": 0,
         "fill-extrusion-opacity": 0
       }
@@ -556,7 +556,9 @@ function addScenarioLayers() {
       id: `${p}-herb-pattern`, type: "fill-extrusion", source: src,
       filter: clsFilter(...HERB_LIKE_CLASSES),
       paint: {
-        "fill-extrusion-pattern": "pastizal",
+        // corredores herbáceos en pardo (pasto seco) para distinguirlos
+        // de parches y bajos verdes
+        "fill-extrusion-pattern": ["match", ["get", "_cls"], "corr-herb", "pastizal-pardo", "pastizal"],
         "fill-extrusion-height": 0,
         "fill-extrusion-opacity": 0
       }
@@ -886,9 +888,11 @@ if (window.matchMedia("(max-width: 760px)").matches) {
 map.on("load", async () => {
   try {
     const pattern = map.loadImage("img/pastizal.jpg");
+    const patternPardo = map.loadImage("img/pastizal-pardo.jpg");
     await loadCampos();
     await loadData();
     map.addImage("pastizal", (await pattern).data);
+    map.addImage("pastizal-pardo", (await patternPardo).data);
     addScenarioLayers();
     applyOpacity("inicial", 1); applyGrowth("inicial", 1);
     applyOpacity("multi", 0); applyGrowth("multi", 0);
