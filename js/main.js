@@ -70,6 +70,16 @@ const TRUNK_COLOR = 0x5b4632;
 const WOODY_BASE = { color: "#2e5026", height: 1.2, opacity: 0.45 };
 const HERB_HEIGHT = 0.6;
 
+/* Matas de pasto de los corredores herbáceos (protagonistas del diseño) */
+const GRASS_CLASSES = ["corr-herb"];
+const GRASS_PALETTE = [0x8a7a4c, 0x97824e, 0xa38d59, 0x7d6f45, 0x8f7440, 0x9c8a5c];
+const IS_MOBILE = window.matchMedia("(max-width: 760px)").matches;
+const GRASS_DENSITY_HA = IS_MOBILE ? 150 : 300;
+const GRASS_MAX = IS_MOBILE ? 16000 : 36000;
+/* Escala estilizada: a altura de dron una mata real de 1 m no se lee;
+   se exagera igual que el resto de la estética low-poly */
+const GRASS_SCALE = 2.2;
+
 /* ---------- Utilidades geométricas ---------- */
 function mulberry32(seed) {
   return function () {
@@ -195,6 +205,55 @@ function generateTreeData(fc, seed) {
   return { trees, shadows: { type: "FeatureCollection", features: shadowFeats } };
 }
 
+/* Puntos de matas de pasto sobre los corredores herbáceos */
+function generateGrassData(fc, seed) {
+  const { points, rng } = scatterInClasses(fc, GRASS_CLASSES, seed, GRASS_DENSITY_HA, GRASS_MAX, 2);
+  const tufts = [];
+  for (const [lon, lat] of points) {
+    tufts.push({
+      lon, lat,
+      h: 0.55 + rng() * 0.75,                       // altura 0,55–1,3 m
+      c: Math.floor(rng() * GRASS_PALETTE.length),
+      j: rng()
+    });
+  }
+  return tufts;
+}
+
+/* Geometría unitaria de una mata: 5 hojas dobladas hacia afuera
+   (base y=0, puntas y≈1; 15 triángulos). Gradiente base oscura →
+   punta dorada vía colores de vértice (se multiplican con el color
+   pardo por instancia). */
+function buildTuftGeometry(blades = 5) {
+  const pos = [], col = [], idx = [];
+  for (let b = 0; b < blades; b++) {
+    const a = (b / blades) * Math.PI * 2 + b * 0.7;
+    const dx = Math.cos(a), dz = Math.sin(a);
+    const bw = 0.09;                                // media base de la hoja
+    const px = -dz * bw, pz = dx * bw;              // perpendicular a la hoja
+    const r0 = 0.06, r1 = 0.2, r2 = 0.36;           // doblez hacia afuera
+    const h1 = 0.55, h2 = 0.9 + ((b * 37) % 12) / 60;
+    const base = pos.length / 3;
+    pos.push(
+      dx * r0 - px, 0, dz * r0 - pz, dx * r0 + px, 0, dz * r0 + pz,
+      dx * r1 - px * 0.55, h1, dz * r1 - pz * 0.55, dx * r1 + px * 0.55, h1, dz * r1 + pz * 0.55,
+      dx * r2, h2, dz * r2
+    );
+    col.push(
+      0.5, 0.47, 0.4, 0.5, 0.47, 0.4,
+      0.85, 0.8, 0.62, 0.85, 0.8, 0.62,
+      1.25, 1.15, 0.8
+    );
+    idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2, base + 2, base + 3, base + 4);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
 /* ---------- Estado global ---------- */
 const params = new URLSearchParams(location.search);
 const DEBUG = params.has("debug");
@@ -268,6 +327,7 @@ const vegLayer = {
   type: "custom",
   renderingMode: "3d",
   groups: {},
+  timeUniform: { value: 0 },   // reloj del viento (solo avanza cuando el mapa repinta)
 
   onAdd(mapInstance, gl) {
     this.camera = new THREE.Camera();
@@ -287,7 +347,7 @@ const vegLayer = {
     this.origin = origin;
 
     for (const key of ["inicial", "multi"]) {
-      const g = this.buildGroup(state.veg[key].trees);
+      const g = this.buildGroup(state.veg[key].trees, state.veg[key].grass);
       g.group.scale.y = state.growth[key] || 0.0001;
       this.setGroupOpacity(g, key === "inicial" ? 1 : 0);
       this.scene.add(g.group);
@@ -298,7 +358,7 @@ const vegLayer = {
     this.renderer.autoClear = false;
   },
 
-  buildGroup(trees) {
+  buildGroup(trees, grass) {
     const group = new THREE.Group();
     const nLobes = trees.reduce((s, t) => s + (t.lobe ? 1 : 0), 0);
 
@@ -368,12 +428,57 @@ const vegLayer = {
     if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true;
 
     group.add(trunks, crowns);
-    return { group, trunkMat, crownMat };
+
+    /* Matas de pasto instanciadas sobre los corredores herbáceos */
+    let grassMat = null;
+    if (grass && grass.length) {
+      grassMat = new THREE.MeshPhongMaterial({
+        color: 0xffffff, flatShading: true, shininess: 0,
+        transparent: true, vertexColors: true, side: THREE.DoubleSide
+      });
+      // Viento: vaivén en shader según la fase por posición de instancia.
+      // Solo anima cuando el mapa repinta (tour, órbita, navegación).
+      const uTime = this.timeUniform;
+      grassMat.onBeforeCompile = sh => {
+        sh.uniforms.uTime = uTime;
+        sh.vertexShader = sh.vertexShader
+          .replace("#include <common>", "#include <common>\nuniform float uTime;")
+          .replace("#include <begin_vertex>",
+            "#include <begin_vertex>\n" +
+            "float ph = dot(instanceMatrix[3].xz, vec2(37.0, 73.0));\n" +
+            "transformed.x += sin(uTime * 1.8 + ph) * 0.12 * position.y;\n" +
+            "transformed.z += cos(uTime * 1.3 + ph * 1.7) * 0.08 * position.y;");
+      };
+      const tufts = new THREE.InstancedMesh(TUFT_GEO, grassMat, grass.length);
+      const m = new THREE.Matrix4();
+      const q = new THREE.Quaternion();
+      const eul = new THREE.Euler();
+      const col = new THREE.Color();
+      const origin = this.origin, s = this.scale;
+      grass.forEach((t, i) => {
+        const mc = maplibregl.MercatorCoordinate.fromLngLat([t.lon, t.lat], 0);
+        eul.set(0, t.j * Math.PI * 2, 0);
+        m.compose(
+          new THREE.Vector3((mc.x - origin.x) / s, 0, (mc.y - origin.y) / s),
+          q.setFromEuler(eul),
+          new THREE.Vector3(t.h * 0.9 * GRASS_SCALE, t.h * GRASS_SCALE, t.h * 0.9 * GRASS_SCALE)
+        );
+        tufts.setMatrixAt(i, m);
+        col.setHex(GRASS_PALETTE[t.c]).offsetHSL(0, 0, (t.j - 0.5) * 0.09);
+        tufts.setColorAt(i, col);
+      });
+      tufts.instanceMatrix.needsUpdate = true;
+      if (tufts.instanceColor) tufts.instanceColor.needsUpdate = true;
+      group.add(tufts);
+    }
+
+    return { group, trunkMat, crownMat, grassMat };
   },
 
   setGroupOpacity(g, o) {
     g.trunkMat.opacity = o;
     g.crownMat.opacity = o;
+    if (g.grassMat) g.grassMat.opacity = o;
     g.group.visible = o > 0.02;
   },
 
@@ -386,11 +491,14 @@ const vegLayer = {
   },
 
   render(gl, matrix) {
+    this.timeUniform.value = performance.now() / 1000;
     this.camera.projectionMatrix = new THREE.Matrix4().fromArray(matrix).multiply(this.l);
     this.renderer.resetState();
     this.renderer.render(this.scene, this.camera);
   }
 };
+
+const TUFT_GEO = buildTuftGeometry();
 
 /* ---------- Carga de configuración y datos ---------- */
 async function loadCampos() {
@@ -455,6 +563,8 @@ async function loadData() {
   computeHomeView();
   state.veg.inicial = generateTreeData(ini, 20260711);
   state.veg.multi = generateTreeData(multi, 47110226);
+  state.veg.inicial.grass = generateGrassData(ini, 13072026);
+  state.veg.multi.grass = generateGrassData(multi, 62027031);
 }
 
 function computeStats() {
@@ -882,6 +992,19 @@ opSlider.addEventListener("input", () => {
 
 if (window.matchMedia("(max-width: 760px)").matches) {
   document.getElementById("panel").classList.add("collapsed");
+}
+
+/* Medidor de FPS (?fps o ?debug): cuenta frames dibujados por segundo.
+   En reposo marca 0 porque el mapa no repinta — mirarlo en movimiento. */
+if (DEBUG || params.has("fps")) {
+  const el = document.createElement("div");
+  el.style.cssText = "position:fixed;left:8px;bottom:34px;z-index:60;background:rgba(10,26,14,.78);" +
+    "color:#e8d9a0;font:12px/1.7 monospace;padding:1px 9px;border-radius:6px;pointer-events:none";
+  el.textContent = "– fps";
+  document.body.appendChild(el);
+  let frames = 0;
+  map.on("render", () => frames++);
+  setInterval(() => { el.textContent = `${frames} fps`; frames = 0; }, 1000);
 }
 
 /* ---------- Arranque ---------- */
