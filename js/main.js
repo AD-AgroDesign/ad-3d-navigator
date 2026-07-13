@@ -225,10 +225,10 @@ const mapStyle = {
       type: "raster",
       tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
       tileSize: 256,
-      // Esri World Imagery no tiene imagen nativa más allá de z17 en estas zonas
-      // rurales (z18+ devuelve el mosaico "Map data not yet available"). Con
-      // maxzoom 17, MapLibre reescala el último tile real en vez de pedir los
-      // inexistentes → sin cartel gris al acercar (imagen algo más blanda).
+      // maxzoom por defecto; se ajusta por campo en loadCampos() según hasta
+      // qué nivel Esri tiene imagen nativa (z18 en Monte Hermoso, z17 en
+      // Silesia/Carmen). Más allá, Esri devuelve "Map data not yet available",
+      // así que reescalamos el último tile real en vez de pedir los inexistentes.
       maxzoom: 17,
       attribution: "Imagen satelital © Esri, Maxar, Earthstar Geographics | AgroDesign"
     }
@@ -394,9 +394,22 @@ const vegLayer = {
 
 /* ---------- Carga de configuración y datos ---------- */
 async function loadCampos() {
-  const cfg = await fetch("data/campos.json").then(r => r.json());
+  // no-cache: revalida el config (ETag/304) para que cambios de campo o de
+  // maxzoom lleguen a usuarios que ya tenían la página cacheada.
+  const cfg = await fetch("data/campos.json", { cache: "no-cache" }).then(r => r.json());
   const wanted = params.get("campo") || cfg.default;
   state.campo = cfg.campos.find(c => c.id === wanted) || cfg.campos[0];
+
+  // Resolución satelital por campo: reconstruimos la fuente Esri con el maxzoom
+  // del campo si difiere del default (evita el cartel "Map data not yet
+  // available" donde no hay imagen, sin resignar nitidez donde sí la hay).
+  const mz = state.campo.maxzoom || mapStyle.sources.esri.maxzoom;
+  if (map.getSource("esri") && mz !== mapStyle.sources.esri.maxzoom) {
+    map.removeLayer("satellite");
+    map.removeSource("esri");
+    map.addSource("esri", { ...mapStyle.sources.esri, maxzoom: mz });
+    map.addLayer({ id: "satellite", type: "raster", source: "esri" });
+  }
 
   const list = document.getElementById("campo-list");
   list.innerHTML = "";
