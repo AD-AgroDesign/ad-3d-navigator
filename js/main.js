@@ -225,7 +225,11 @@ const mapStyle = {
       type: "raster",
       tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
       tileSize: 256,
-      maxzoom: 18,
+      // Esri World Imagery no tiene imagen nativa más allá de z17 en estas zonas
+      // rurales (z18+ devuelve el mosaico "Map data not yet available"). Con
+      // maxzoom 17, MapLibre reescala el último tile real en vez de pedir los
+      // inexistentes → sin cartel gris al acercar (imagen algo más blanda).
+      maxzoom: 17,
       attribution: "Imagen satelital © Esri, Maxar, Earthstar Geographics | AgroDesign"
     }
   },
