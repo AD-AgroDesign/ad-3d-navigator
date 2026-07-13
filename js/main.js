@@ -15,7 +15,7 @@ const CLASS_META = {
   "parche-le":     { label: "Parche Leñoso",              legend: "#1b4020" },
   "corr-le":       { label: "Corredor Leñoso",            legend: "#2f5d33" },
   "parche-herb":   { label: "Parche Herbáceo",            legend: "#8a9c66" },
-  "corr-herb":     { label: "Corredor Herbáceo",          legend: "#a68b56" },
+  "corr-herb":     { label: "Corredor Herbáceo",          legend: "#947c4a" },
   "bajo":          { label: "Bajo en Recuperación",       legend: "#7c9a80" },
   "instalaciones": { label: "Instalaciones",              legend: "#b8b3a4" },
   "camino":        { label: "Caminos",                    legend: "#c9bd9e" },
@@ -74,11 +74,11 @@ const HERB_HEIGHT = 0.6;
 const GRASS_CLASSES = ["corr-herb"];
 const GRASS_PALETTE = [0x8a7a4c, 0x97824e, 0xa38d59, 0x7d6f45, 0x8f7440, 0x9c8a5c];
 const IS_MOBILE = window.matchMedia("(max-width: 760px)").matches;
-const GRASS_DENSITY_HA = IS_MOBILE ? 150 : 300;
-const GRASS_MAX = IS_MOBILE ? 16000 : 36000;
+const GRASS_DENSITY_HA = IS_MOBILE ? 400 : 1000;
+const GRASS_MAX = IS_MOBILE ? 40000 : 120000;
 /* Escala estilizada: a altura de dron una mata real de 1 m no se lee;
    se exagera igual que el resto de la estética low-poly */
-const GRASS_SCALE = 2.2;
+const GRASS_SCALE = 3.0;
 
 /* ---------- Utilidades geométricas ---------- */
 function mulberry32(seed) {
@@ -657,7 +657,7 @@ function addScenarioLayers() {
       id: `${p}-herb-ext`, type: "fill-extrusion", source: src,
       filter: clsFilter(...HERB_LIKE_CLASSES),
       paint: {
-        "fill-extrusion-color": ["match", ["get", "_cls"], "corr-herb", "#8a7a4c", "bajo", "#6f8a72", "#6d8050"],
+        "fill-extrusion-color": ["match", ["get", "_cls"], "corr-herb", "#6b5d38", "bajo", "#6f8a72", "#6d8050"],
         "fill-extrusion-height": 0,
         "fill-extrusion-opacity": 0
       }
