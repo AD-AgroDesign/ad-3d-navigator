@@ -74,11 +74,11 @@ const HERB_HEIGHT = 0.6;
 const GRASS_CLASSES = ["corr-herb"];
 const GRASS_PALETTE = [0x8a7a4c, 0x97824e, 0xa38d59, 0x7d6f45, 0x8f7440, 0x9c8a5c];
 const IS_MOBILE = window.matchMedia("(max-width: 760px)").matches;
-const GRASS_DENSITY_HA = IS_MOBILE ? 400 : 1000;
-const GRASS_MAX = IS_MOBILE ? 40000 : 120000;
+const GRASS_DENSITY_HA = IS_MOBILE ? 1000 : 1500;
+const GRASS_MAX = IS_MOBILE ? 100000 : 180000;
 /* Escala estilizada: a altura de dron una mata real de 1 m no se lee;
    se exagera igual que el resto de la estética low-poly */
-const GRASS_SCALE = 3.0;
+const GRASS_SCALE = 3.6;
 
 /* ---------- Utilidades geométricas ---------- */
 function mulberry32(seed) {
