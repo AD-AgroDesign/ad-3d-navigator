@@ -243,7 +243,7 @@ const mapStyle = {
 const map = new maplibregl.Map({
   container: "map",
   style: mapStyle,
-  preserveDrawingBuffer: DEBUG,
+  preserveDrawingBuffer: true,  // permite exportar la vista a PNG (botón capturar)
   center: HOME_VIEW.center,
   zoom: 11.4,
   pitch: 0,
@@ -798,6 +798,45 @@ document.getElementById("btn-orbit").addEventListener("click", () =>
 document.getElementById("btn-reset").addEventListener("click", () => {
   stopTour(); stopOrbit();
   map.flyTo({ ...HOME_VIEW, duration: 3500, essential: true });
+});
+
+/* ---------- Captura de imagen (PNG de la vista actual) ---------- */
+function captureImage() {
+  // Forzar un render fresco y leer el buffer en el mismo frame
+  map.once("render", () => {
+    let url;
+    try {
+      url = map.getCanvas().toDataURL("image/png");
+    } catch (err) {
+      console.error("No se pudo capturar la imagen:", err);
+      return;
+    }
+    const escena = state.scenario === "inicial" ? "paisaje-actual" : "paisaje-multifuncional";
+    const campo = (state.campo && state.campo.id) || "campo";
+    const stamp = new Date().toISOString().slice(0, 10);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `agrodesign-${campo}-${escena}-${stamp}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+  map.triggerRepaint();
+}
+document.getElementById("btn-capture").addEventListener("click", captureImage);
+
+/* ---------- Pantalla completa (útil para el iframe embebido) ---------- */
+function toggleFullscreen() {
+  const el = document.documentElement;
+  if (!document.fullscreenElement) {
+    (el.requestFullscreen || el.webkitRequestFullscreen || (() => {})).call(el);
+  } else {
+    (document.exitFullscreen || document.webkitExitFullscreen || (() => {})).call(document);
+  }
+}
+document.getElementById("btn-fullscreen").addEventListener("click", toggleFullscreen);
+document.addEventListener("fullscreenchange", () => {
+  document.getElementById("btn-fullscreen").classList.toggle("active", !!document.fullscreenElement);
 });
 
 document.getElementById("btn-start").addEventListener("click", () => {
