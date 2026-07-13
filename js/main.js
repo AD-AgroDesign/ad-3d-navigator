@@ -878,7 +878,7 @@ map.on("load", async () => {
     updatePanel();
     const btn = document.getElementById("btn-start");
     btn.disabled = false;
-    document.getElementById("btn-start-label").textContent = "Iniciar vuelo";
+    document.getElementById("btn-start-label").textContent = "Iniciar simulación";
   } catch (err) {
     console.error("Error cargando datos del paisaje:", err);
     document.getElementById("btn-start-label").textContent = "Error al cargar datos";

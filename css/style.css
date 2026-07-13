@@ -212,6 +212,7 @@ html, body { height: 100%; overflow: hidden; background: var(--ad-green-dark); }
 #flight-controls button:hover { background: var(--ad-green-mid); transform: scale(1.07); }
 #flight-controls button.active { background: var(--ad-gold); color: #1d1607; border-color: var(--ad-gold); }
 #btn-tour svg, #btn-reset svg { display: block; }
+#flight-controls #btn-orbit { font-size: 27px; line-height: 1; }
 
 #tour-banner {
   position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(80px);
@@ -253,5 +254,12 @@ html, body { height: 100%; overflow: hidden; background: var(--ad-green-dark); }
   #panel { top: auto; bottom: 12px; }
   #panel.collapsed { transform: translateY(130%); }
   #flight-controls { bottom: auto; top: calc(var(--topbar-h) + 12px); }
+  /* Control +/- y brújula de MapLibre a la izquierda, para no chocar con los 3 botones de cámara */
+  .maplibregl-ctrl-top-right { left: 8px; right: auto; }
+  /* Ícono de órbita un poco más grande en móvil */
+  #flight-controls #btn-orbit { font-size: 30px; }
+  /* Portada: "Navegación libre…" en su propia línea */
+  .splash-hint .hint-sep { display: none; }
+  .splash-hint .hint-b { display: block; margin-top: 4px; }
   #tour-banner { font-size: 11.5px; max-width: 92%; white-space: normal; text-align: center; }
 }
