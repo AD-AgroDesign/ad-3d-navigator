@@ -71,14 +71,23 @@ const WOODY_BASE = { color: "#2e5026", height: 1.2, opacity: 0.45 };
 const HERB_HEIGHT = 0.6;
 
 /* Matas de pasto: corredores herbáceos (pardo) y parches herbáceos
-   (verde; el gradiente de vértices les da las puntas doradas) */
-const GRASS_PALETTES = {
-  "corr-herb":   [0x8a7a4c, 0x97824e, 0xa38d59, 0x7d6f45, 0x8f7440, 0x9c8a5c],
-  "parche-herb": [0x5f7a3a, 0x6b8a41, 0x548034, 0x71904a, 0x497029, 0x8a9448]
-};
+   (verde; el gradiente de vértices les da las puntas doradas).
+   Presupuesto por clase: los corredores son los protagonistas y mantienen
+   densidad plena; los parches, mucho más extensos, van con tope menor
+   (midió 20 fps en el peor caso con tope pleno en ambos). */
 const IS_MOBILE = window.matchMedia("(max-width: 760px)").matches;
-const GRASS_DENSITY_HA = IS_MOBILE ? 1000 : 1500;
-const GRASS_MAX = IS_MOBILE ? 100000 : 180000;
+const GRASS_CLASSES = {
+  "corr-herb": {
+    palette: [0x8a7a4c, 0x97824e, 0xa38d59, 0x7d6f45, 0x8f7440, 0x9c8a5c],
+    density: IS_MOBILE ? 1000 : 1500,
+    max: IS_MOBILE ? 100000 : 180000
+  },
+  "parche-herb": {
+    palette: [0x5f7a3a, 0x6b8a41, 0x548034, 0x71904a, 0x497029, 0x8a9448],
+    density: IS_MOBILE ? 500 : 800,
+    max: IS_MOBILE ? 60000 : 120000
+  }
+};
 /* Escala estilizada: a altura de dron una mata real de 1 m no se lee;
    se exagera igual que el resto de la estética low-poly */
 const GRASS_SCALE = 3.6;
@@ -212,13 +221,13 @@ function generateTreeData(fc, seed) {
    la densidad y el tope se aplican por clase) */
 function generateGrassData(fc, seed) {
   const tufts = [];
-  Object.entries(GRASS_PALETTES).forEach(([cls, palette], k) => {
-    const { points, rng } = scatterInClasses(fc, [cls], seed + k * 977, GRASS_DENSITY_HA, GRASS_MAX, 2);
+  Object.entries(GRASS_CLASSES).forEach(([cls, cfg], k) => {
+    const { points, rng } = scatterInClasses(fc, [cls], seed + k * 977, cfg.density, cfg.max, 2);
     for (const [lon, lat] of points) {
       tufts.push({
         lon, lat,
         h: 0.55 + rng() * 0.75,                     // altura 0,55–1,3 m
-        c: palette[Math.floor(rng() * palette.length)],
+        c: cfg.palette[Math.floor(rng() * cfg.palette.length)],
         j: rng()
       });
     }
@@ -226,31 +235,29 @@ function generateGrassData(fc, seed) {
   return tufts;
 }
 
-/* Geometría unitaria de una mata: 5 hojas dobladas hacia afuera
-   (base y=0, puntas y≈1; 15 triángulos). Gradiente base oscura →
-   punta dorada vía colores de vértice (se multiplican con el color
-   pardo por instancia). */
-function buildTuftGeometry(blades = 5) {
+/* Geometría unitaria de una mata: 4 hojas inclinadas hacia afuera
+   (base y=0, puntas y≈1; 8 triángulos — presupuesto de GPU medido).
+   Gradiente base oscura → punta dorada vía colores de vértice (se
+   multiplican con el color por instancia). */
+function buildTuftGeometry(blades = 4) {
   const pos = [], col = [], idx = [];
   for (let b = 0; b < blades; b++) {
-    const a = (b / blades) * Math.PI * 2 + b * 0.7;
+    const a = (b / blades) * Math.PI * 2 + b * 0.9;
     const dx = Math.cos(a), dz = Math.sin(a);
-    const bw = 0.09;                                // media base de la hoja
+    const bw = 0.1;                                 // media base de la hoja
     const px = -dz * bw, pz = dx * bw;              // perpendicular a la hoja
-    const r0 = 0.06, r1 = 0.2, r2 = 0.36;           // doblez hacia afuera
-    const h1 = 0.55, h2 = 0.9 + ((b * 37) % 12) / 60;
+    const r0 = 0.06, r2 = 0.34;                     // inclinación hacia afuera
+    const h2 = 0.9 + ((b * 37) % 12) / 60;
     const base = pos.length / 3;
     pos.push(
       dx * r0 - px, 0, dz * r0 - pz, dx * r0 + px, 0, dz * r0 + pz,
-      dx * r1 - px * 0.55, h1, dz * r1 - pz * 0.55, dx * r1 + px * 0.55, h1, dz * r1 + pz * 0.55,
-      dx * r2, h2, dz * r2
+      dx * r2 + px * 0.22, h2, dz * r2 + pz * 0.22, dx * r2 - px * 0.22, h2, dz * r2 - pz * 0.22
     );
     col.push(
       0.5, 0.47, 0.4, 0.5, 0.47, 0.4,
-      0.85, 0.8, 0.62, 0.85, 0.8, 0.62,
-      1.25, 1.15, 0.8
+      1.25, 1.15, 0.8, 1.25, 1.15, 0.8
     );
-    idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2, base + 2, base + 3, base + 4);
+    idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
