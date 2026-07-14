@@ -78,12 +78,20 @@ const HERB_HEIGHT = 0.6;
 const IS_MOBILE = window.matchMedia("(max-width: 760px)").matches;
 const GRASS_CLASSES = {
   "corr-herb": {
-    palette: [0x8a7a4c, 0x97824e, 0xa38d59, 0x7d6f45, 0x8f7440, 0x9c8a5c],
+    // verdes grisáceos con flores lila SOLO en la puntita (ref
+    // img/Vista_sobre_corredor.jpg): fila intermedia de vértices a 2/3 de
+    // altura, verde hasta ahí y de ahí al lila (hoja de 4 triángulos)
+    palette: [0x5a6d48, 0x647952, 0x536a42, 0x6d7f57, 0x4c6240, 0x71835a],
+    tip: [2.05, 1.4, 3.1],
+    base: [0.62, 0.72, 0.5],
+    mid: 0.66,
+    midCol: [0.72, 0.82, 0.58],
     density: IS_MOBILE ? 1000 : 1500,
     max: IS_MOBILE ? 100000 : 180000
   },
   "parche-herb": {
     palette: [0x5f7a3a, 0x6b8a41, 0x548034, 0x71904a, 0x497029, 0x8a9448],
+    tip: [1.25, 1.15, 0.8],   // puntas doradas
     density: IS_MOBILE ? 500 : 800,
     max: IS_MOBILE ? 60000 : 120000
   }
@@ -220,9 +228,10 @@ function generateTreeData(fc, seed) {
 /* Puntos de matas de pasto (una pasada por clase, con su paleta;
    la densidad y el tope se aplican por clase) */
 function generateGrassData(fc, seed) {
-  const tufts = [];
+  const byClass = {};
   Object.entries(GRASS_CLASSES).forEach(([cls, cfg], k) => {
     const { points, rng } = scatterInClasses(fc, [cls], seed + k * 977, cfg.density, cfg.max, 2);
+    const tufts = [];
     for (const [lon, lat] of points) {
       tufts.push({
         lon, lat,
@@ -231,15 +240,18 @@ function generateGrassData(fc, seed) {
         j: rng()
       });
     }
+    byClass[cls] = tufts;
   });
-  return tufts;
+  return byClass;
 }
 
 /* Geometría unitaria de una mata: 4 hojas inclinadas hacia afuera
-   (base y=0, puntas y≈1; 8 triángulos — presupuesto de GPU medido).
-   Gradiente base oscura → punta dorada vía colores de vértice (se
-   multiplican con el color por instancia). */
-function buildTuftGeometry(blades = 4) {
+   (base y=0, puntas y≈1). Gradiente base → punta vía colores de vértice
+   (se multiplican con el color por instancia). Sin `mid`: hoja de 1 quad
+   (8 tris/mata). Con `mid` (fracción de altura) se agrega una fila
+   intermedia con su color: el de punta queda confinado al tramo superior
+   (hoja de 4 tris, 16 tris/mata). */
+function buildTuftGeometry(blades = 4, tip = [1.25, 1.15, 0.8], baseCol = [0.5, 0.47, 0.4], mid = null, midCol = null) {
   const pos = [], col = [], idx = [];
   for (let b = 0; b < blades; b++) {
     const a = (b / blades) * Math.PI * 2 + b * 0.9;
@@ -248,16 +260,33 @@ function buildTuftGeometry(blades = 4) {
     const px = -dz * bw, pz = dx * bw;              // perpendicular a la hoja
     const r0 = 0.06, r2 = 0.34;                     // inclinación hacia afuera
     const h2 = 0.9 + ((b * 37) % 12) / 60;
-    const base = pos.length / 3;
+    const v0 = pos.length / 3;
     pos.push(
-      dx * r0 - px, 0, dz * r0 - pz, dx * r0 + px, 0, dz * r0 + pz,
+      dx * r0 - px, 0, dz * r0 - pz, dx * r0 + px, 0, dz * r0 + pz
+    );
+    col.push(
+      baseCol[0], baseCol[1], baseCol[2], baseCol[0], baseCol[1], baseCol[2]
+    );
+    if (mid) {
+      const rm = r0 + (r2 - r0) * mid, hm = h2 * mid, wm = 1 - (1 - 0.22) * mid;
+      pos.push(
+        dx * rm - px * wm, hm, dz * rm - pz * wm, dx * rm + px * wm, hm, dz * rm + pz * wm
+      );
+      col.push(
+        midCol[0], midCol[1], midCol[2], midCol[0], midCol[1], midCol[2]
+      );
+      idx.push(v0, v0 + 1, v0 + 3, v0, v0 + 3, v0 + 2);
+    }
+    const t = pos.length / 3;
+    pos.push(
       dx * r2 + px * 0.22, h2, dz * r2 + pz * 0.22, dx * r2 - px * 0.22, h2, dz * r2 - pz * 0.22
     );
     col.push(
-      0.5, 0.47, 0.4, 0.5, 0.47, 0.4,
-      1.25, 1.15, 0.8, 1.25, 1.15, 0.8
+      tip[0], tip[1], tip[2], tip[0], tip[1], tip[2]
     );
-    idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    // fila previa (base o intermedia) → punta; el orden de la punta está
+    // espejado respecto a la fila inferior
+    idx.push(t - 2, t - 1, t, t - 2, t, t + 1);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
@@ -442,9 +471,10 @@ const vegLayer = {
 
     group.add(trunks, crowns);
 
-    /* Matas de pasto instanciadas sobre los corredores herbáceos */
+    /* Matas de pasto instanciadas: un mesh por clase (cada clase tiene su
+       geometría con el color de punta propio); material compartido */
     let grassMat = null;
-    if (grass && grass.length) {
+    if (grass && Object.values(grass).some(t => t.length)) {
       grassMat = new THREE.MeshPhongMaterial({
         color: 0xffffff, flatShading: true, shininess: 0,
         transparent: true, vertexColors: true, side: THREE.DoubleSide
@@ -462,27 +492,30 @@ const vegLayer = {
             "transformed.x += sin(uTime * 1.8 + ph) * 0.12 * position.y;\n" +
             "transformed.z += cos(uTime * 1.3 + ph * 1.7) * 0.08 * position.y;");
       };
-      const tufts = new THREE.InstancedMesh(TUFT_GEO, grassMat, grass.length);
       const m = new THREE.Matrix4();
       const q = new THREE.Quaternion();
       const eul = new THREE.Euler();
       const col = new THREE.Color();
       const origin = this.origin, s = this.scale;
-      grass.forEach((t, i) => {
-        const mc = maplibregl.MercatorCoordinate.fromLngLat([t.lon, t.lat], 0);
-        eul.set(0, t.j * Math.PI * 2, 0);
-        m.compose(
-          new THREE.Vector3((mc.x - origin.x) / s, 0, (mc.y - origin.y) / s),
-          q.setFromEuler(eul),
-          new THREE.Vector3(t.h * 0.9 * GRASS_SCALE, t.h * GRASS_SCALE, t.h * 0.9 * GRASS_SCALE)
-        );
-        tufts.setMatrixAt(i, m);
-        col.setHex(t.c).offsetHSL(0, 0, (t.j - 0.5) * 0.09);
-        tufts.setColorAt(i, col);
-      });
-      tufts.instanceMatrix.needsUpdate = true;
-      if (tufts.instanceColor) tufts.instanceColor.needsUpdate = true;
-      group.add(tufts);
+      for (const [cls, list] of Object.entries(grass)) {
+        if (!list.length) continue;
+        const tufts = new THREE.InstancedMesh(TUFT_GEOS[cls], grassMat, list.length);
+        list.forEach((t, i) => {
+          const mc = maplibregl.MercatorCoordinate.fromLngLat([t.lon, t.lat], 0);
+          eul.set(0, t.j * Math.PI * 2, 0);
+          m.compose(
+            new THREE.Vector3((mc.x - origin.x) / s, 0, (mc.y - origin.y) / s),
+            q.setFromEuler(eul),
+            new THREE.Vector3(t.h * 0.9 * GRASS_SCALE, t.h * GRASS_SCALE, t.h * 0.9 * GRASS_SCALE)
+          );
+          tufts.setMatrixAt(i, m);
+          col.setHex(t.c).offsetHSL(0, 0, (t.j - 0.5) * 0.09);
+          tufts.setColorAt(i, col);
+        });
+        tufts.instanceMatrix.needsUpdate = true;
+        if (tufts.instanceColor) tufts.instanceColor.needsUpdate = true;
+        group.add(tufts);
+      }
     }
 
     return { group, trunkMat, crownMat, grassMat };
@@ -511,7 +544,10 @@ const vegLayer = {
   }
 };
 
-const TUFT_GEO = buildTuftGeometry();
+const TUFT_GEOS = {};
+for (const [cls, cfg] of Object.entries(GRASS_CLASSES)) {
+  TUFT_GEOS[cls] = buildTuftGeometry(4, cfg.tip, cfg.base, cfg.mid, cfg.midCol);
+}
 
 /* ---------- Carga de configuración y datos ---------- */
 async function loadCampos() {
