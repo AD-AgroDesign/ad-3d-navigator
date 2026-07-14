@@ -14,7 +14,7 @@ const CLASS_META = {
   "zona3":         { label: "Agrícola Secano · Zona 3",   legend: "#9ccc65" },
   "parche-le":     { label: "Parche Leñoso",              legend: "#1b4020" },
   "corr-le":       { label: "Corredor Leñoso",            legend: "#2f5d33" },
-  "parche-herb":   { label: "Parche Herbáceo",            legend: "#8a9c66" },
+  "parche-herb":   { label: "Parche Herbáceo",            legend: "#6a7c48" },
   "corr-herb":     { label: "Corredor Herbáceo",          legend: "#947c4a" },
   "bajo":          { label: "Bajo en Recuperación",       legend: "#7c9a80" },
   "instalaciones": { label: "Instalaciones",              legend: "#b8b3a4" },
@@ -70,9 +70,12 @@ const TRUNK_COLOR = 0x5b4632;
 const WOODY_BASE = { color: "#2e5026", height: 1.2, opacity: 0.45 };
 const HERB_HEIGHT = 0.6;
 
-/* Matas de pasto de los corredores herbáceos (protagonistas del diseño) */
-const GRASS_CLASSES = ["corr-herb"];
-const GRASS_PALETTE = [0x8a7a4c, 0x97824e, 0xa38d59, 0x7d6f45, 0x8f7440, 0x9c8a5c];
+/* Matas de pasto: corredores herbáceos (pardo) y parches herbáceos
+   (verde; el gradiente de vértices les da las puntas doradas) */
+const GRASS_PALETTES = {
+  "corr-herb":   [0x8a7a4c, 0x97824e, 0xa38d59, 0x7d6f45, 0x8f7440, 0x9c8a5c],
+  "parche-herb": [0x5f7a3a, 0x6b8a41, 0x548034, 0x71904a, 0x497029, 0x8a9448]
+};
 const IS_MOBILE = window.matchMedia("(max-width: 760px)").matches;
 const GRASS_DENSITY_HA = IS_MOBILE ? 1000 : 1500;
 const GRASS_MAX = IS_MOBILE ? 100000 : 180000;
@@ -205,18 +208,21 @@ function generateTreeData(fc, seed) {
   return { trees, shadows: { type: "FeatureCollection", features: shadowFeats } };
 }
 
-/* Puntos de matas de pasto sobre los corredores herbáceos */
+/* Puntos de matas de pasto (una pasada por clase, con su paleta;
+   la densidad y el tope se aplican por clase) */
 function generateGrassData(fc, seed) {
-  const { points, rng } = scatterInClasses(fc, GRASS_CLASSES, seed, GRASS_DENSITY_HA, GRASS_MAX, 2);
   const tufts = [];
-  for (const [lon, lat] of points) {
-    tufts.push({
-      lon, lat,
-      h: 0.55 + rng() * 0.75,                       // altura 0,55–1,3 m
-      c: Math.floor(rng() * GRASS_PALETTE.length),
-      j: rng()
-    });
-  }
+  Object.entries(GRASS_PALETTES).forEach(([cls, palette], k) => {
+    const { points, rng } = scatterInClasses(fc, [cls], seed + k * 977, GRASS_DENSITY_HA, GRASS_MAX, 2);
+    for (const [lon, lat] of points) {
+      tufts.push({
+        lon, lat,
+        h: 0.55 + rng() * 0.75,                     // altura 0,55–1,3 m
+        c: palette[Math.floor(rng() * palette.length)],
+        j: rng()
+      });
+    }
+  });
   return tufts;
 }
 
@@ -464,7 +470,7 @@ const vegLayer = {
           new THREE.Vector3(t.h * 0.9 * GRASS_SCALE, t.h * GRASS_SCALE, t.h * 0.9 * GRASS_SCALE)
         );
         tufts.setMatrixAt(i, m);
-        col.setHex(GRASS_PALETTE[t.c]).offsetHSL(0, 0, (t.j - 0.5) * 0.09);
+        col.setHex(t.c).offsetHSL(0, 0, (t.j - 0.5) * 0.09);
         tufts.setColorAt(i, col);
       });
       tufts.instanceMatrix.needsUpdate = true;
@@ -657,7 +663,7 @@ function addScenarioLayers() {
       id: `${p}-herb-ext`, type: "fill-extrusion", source: src,
       filter: clsFilter(...HERB_LIKE_CLASSES),
       paint: {
-        "fill-extrusion-color": ["match", ["get", "_cls"], "corr-herb", "#6b5d38", "bajo", "#6f8a72", "#6d8050"],
+        "fill-extrusion-color": ["match", ["get", "_cls"], "corr-herb", "#6b5d38", "bajo", "#6f8a72", "parche-herb", "#4d5c33", "#6d8050"],
         "fill-extrusion-height": 0,
         "fill-extrusion-opacity": 0
       }
@@ -666,9 +672,12 @@ function addScenarioLayers() {
       id: `${p}-herb-pattern`, type: "fill-extrusion", source: src,
       filter: clsFilter(...HERB_LIKE_CLASSES),
       paint: {
-        // corredores herbáceos en pardo (pasto seco) para distinguirlos
-        // de parches y bajos verdes
-        "fill-extrusion-pattern": ["match", ["get", "_cls"], "corr-herb", "pastizal-pardo", "pastizal"],
+        // corredores herbáceos en pardo (pasto seco) y parches herbáceos
+        // en verde oscuro; el resto con el pastizal estándar
+        "fill-extrusion-pattern": ["match", ["get", "_cls"],
+          "corr-herb", "pastizal-pardo",
+          "parche-herb", "pastizal-verde",
+          "pastizal"],
         "fill-extrusion-height": 0,
         "fill-extrusion-opacity": 0
       }
@@ -1012,10 +1021,12 @@ map.on("load", async () => {
   try {
     const pattern = map.loadImage("img/pastizal.jpg");
     const patternPardo = map.loadImage("img/pastizal-pardo.jpg");
+    const patternVerde = map.loadImage("img/pastizal-verde.jpg");
     await loadCampos();
     await loadData();
     map.addImage("pastizal", (await pattern).data);
     map.addImage("pastizal-pardo", (await patternPardo).data);
+    map.addImage("pastizal-verde", (await patternVerde).data);
     addScenarioLayers();
     applyOpacity("inicial", 1); applyGrowth("inicial", 1);
     applyOpacity("multi", 0); applyGrowth("multi", 0);
