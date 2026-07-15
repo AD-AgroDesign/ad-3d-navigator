@@ -1020,6 +1020,15 @@ document.addEventListener("fullscreenchange", () => {
   document.getElementById("btn-fullscreen").classList.toggle("active", !!document.fullscreenElement);
 });
 
+/* ---------- Altura real del header (se ajusta automáticamente cuando
+   envuelve a 2 o 3 líneas en pantallas angostas, para que el mapa y los
+   controles nunca queden tapados debajo) ---------- */
+const topbarEl = document.getElementById("topbar");
+const syncTopbarHeight = () =>
+  document.documentElement.style.setProperty("--topbar-h", `${topbarEl.offsetHeight}px`);
+new ResizeObserver(syncTopbarHeight).observe(topbarEl);
+syncTopbarHeight();
+
 document.getElementById("btn-start").addEventListener("click", () => {
   document.getElementById("splash").classList.add("hidden");
   map.flyTo({ ...HOME_VIEW, duration: 5000, essential: true });

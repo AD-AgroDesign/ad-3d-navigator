@@ -85,6 +85,7 @@ html, body { height: 100%; overflow: hidden; background: var(--ad-green-dark); }
 .sw-btn:not(.active):hover { color: #fff; }
 
 .topbar-right { display: flex; align-items: center; gap: 8px; }
+.topbar-tools { display: flex; align-items: center; gap: 8px; }
 
 /* ---------- Dropdown de campos (estética dashboard) ---------- */
 #campo-dd { position: relative; }
@@ -262,4 +263,15 @@ html, body { height: 100%; overflow: hidden; background: var(--ad-green-dark); }
   .splash-hint .hint-sep { display: none; }
   .splash-hint .hint-b { display: block; margin-top: 4px; }
   #tour-banner { font-size: 11.5px; max-width: 92%; white-space: normal; text-align: center; }
+}
+
+/* ---------- Mobile angosto: header a 3 líneas prolijas ---------- */
+@media (max-width: 430px) {
+  /* Línea 1: solo el logo */
+  #topbar .brand-text { display: none; }
+  #topbar .brand { justify-content: center; width: 100%; }
+  /* Línea 2: selector de campo a la izquierda, capturar/pantalla completa/menú a la derecha */
+  .topbar-right { width: 100%; justify-content: space-between; }
+  #campo-btn { max-width: none; }
+  #campo-current { max-width: 45vw; }
 }
