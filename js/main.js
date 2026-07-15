@@ -86,6 +86,9 @@ const GRASS_CLASSES = {
     base: [0.62, 0.72, 0.5],
     mid: 0.66,
     midCol: [0.72, 0.82, 0.58],
+    // ~la mitad de las matas sin flor: hoja verde de gradiente simple
+    // (sin fila intermedia: 8 tris en vez de 16)
+    alt: { share: 0.5, tip: [0.9, 1.05, 0.65], base: [0.62, 0.72, 0.5] },
     density: IS_MOBILE ? 1000 : 1500,
     max: IS_MOBILE ? 100000 : 180000
   },
@@ -237,7 +240,8 @@ function generateGrassData(fc, seed) {
         lon, lat,
         h: 0.55 + rng() * 0.75,                     // altura 0,55–1,3 m
         c: cfg.palette[Math.floor(rng() * cfg.palette.length)],
-        j: rng()
+        j: rng(),
+        v: cfg.alt && rng() < cfg.alt.share ? 1 : 0 // 1 = variante sin flor
       });
     }
     byClass[cls] = tufts;
@@ -499,22 +503,29 @@ const vegLayer = {
       const origin = this.origin, s = this.scale;
       for (const [cls, list] of Object.entries(grass)) {
         if (!list.length) continue;
-        const tufts = new THREE.InstancedMesh(TUFT_GEOS[cls], grassMat, list.length);
-        list.forEach((t, i) => {
-          const mc = maplibregl.MercatorCoordinate.fromLngLat([t.lon, t.lat], 0);
-          eul.set(0, t.j * Math.PI * 2, 0);
-          m.compose(
-            new THREE.Vector3((mc.x - origin.x) / s, 0, (mc.y - origin.y) / s),
-            q.setFromEuler(eul),
-            new THREE.Vector3(t.h * 0.9 * GRASS_SCALE, t.h * GRASS_SCALE, t.h * 0.9 * GRASS_SCALE)
-          );
-          tufts.setMatrixAt(i, m);
-          col.setHex(t.c).offsetHSL(0, 0, (t.j - 0.5) * 0.09);
-          tufts.setColorAt(i, col);
-        });
-        tufts.instanceMatrix.needsUpdate = true;
-        if (tufts.instanceColor) tufts.instanceColor.needsUpdate = true;
-        group.add(tufts);
+        // Las matas marcadas como variante (sin flor) van en su propio
+        // mesh con la geometría alternativa de la clase
+        const batches = [[TUFT_GEOS[cls], list.filter(t => !t.v)]];
+        if (TUFT_GEOS[cls + "/alt"]) batches.push([TUFT_GEOS[cls + "/alt"], list.filter(t => t.v)]);
+        for (const [geo, sub] of batches) {
+          if (!sub.length) continue;
+          const tufts = new THREE.InstancedMesh(geo, grassMat, sub.length);
+          sub.forEach((t, i) => {
+            const mc = maplibregl.MercatorCoordinate.fromLngLat([t.lon, t.lat], 0);
+            eul.set(0, t.j * Math.PI * 2, 0);
+            m.compose(
+              new THREE.Vector3((mc.x - origin.x) / s, 0, (mc.y - origin.y) / s),
+              q.setFromEuler(eul),
+              new THREE.Vector3(t.h * 0.9 * GRASS_SCALE, t.h * GRASS_SCALE, t.h * 0.9 * GRASS_SCALE)
+            );
+            tufts.setMatrixAt(i, m);
+            col.setHex(t.c).offsetHSL(0, 0, (t.j - 0.5) * 0.09);
+            tufts.setColorAt(i, col);
+          });
+          tufts.instanceMatrix.needsUpdate = true;
+          if (tufts.instanceColor) tufts.instanceColor.needsUpdate = true;
+          group.add(tufts);
+        }
       }
     }
 
@@ -547,6 +558,7 @@ const vegLayer = {
 const TUFT_GEOS = {};
 for (const [cls, cfg] of Object.entries(GRASS_CLASSES)) {
   TUFT_GEOS[cls] = buildTuftGeometry(4, cfg.tip, cfg.base, cfg.mid, cfg.midCol);
+  if (cfg.alt) TUFT_GEOS[cls + "/alt"] = buildTuftGeometry(4, cfg.alt.tip, cfg.alt.base, cfg.alt.mid, cfg.alt.midCol);
 }
 
 /* ---------- Carga de configuración y datos ---------- */
