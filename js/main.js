@@ -584,7 +584,6 @@ async function loadCampos() {
     list.appendChild(li);
   }
   document.getElementById("campo-current").textContent = ddLabel(state.campo);
-  document.getElementById("brand-campo").textContent = `${state.campo.nombre} · Navegador 3D`;
   document.getElementById("splash-campo").textContent = state.campo.nombre;
   document.title = `AgroDesign · Navegador 3D · ${state.campo.nombre}`;
 }
@@ -1024,9 +1023,14 @@ document.addEventListener("fullscreenchange", () => {
    envuelve a 2 o 3 líneas en pantallas angostas, para que el mapa y los
    controles nunca queden tapados debajo) ---------- */
 const topbarEl = document.getElementById("topbar");
-const syncTopbarHeight = () =>
+const syncTopbarHeight = () => {
+  // Medir sin el valor inline: en escritorio el CSS fija la altura con la
+  // misma variable, y medir con ella puesta la dejaría clavada al agrandar
+  document.documentElement.style.removeProperty("--topbar-h");
   document.documentElement.style.setProperty("--topbar-h", `${topbarEl.offsetHeight}px`);
+};
 new ResizeObserver(syncTopbarHeight).observe(topbarEl);
+window.addEventListener("resize", syncTopbarHeight);
 syncTopbarHeight();
 
 document.getElementById("btn-start").addEventListener("click", () => {
