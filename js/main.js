@@ -312,7 +312,7 @@ const state = {
   stats: { inicial: {}, multi: {} },
   bbox: null,
   designOpacity: 1,
-  tour: { running: false, timer: null, route: [], step: 0 },
+  tour: { running: false, timer: null, raf: null, route: [], step: 0 },
   orbit: { running: false, raf: null },
   growth: { inicial: 1, multi: 0 },
   anim: null
@@ -901,6 +901,87 @@ function shuffled(arr) {
   return a;
 }
 
+/* Eje central aproximado de un corredor (polígono alargado): vértices del
+   anillo exterior proyectados sobre el eje principal (PCA) y promediados
+   por franjas. Sirve de ruta para el vuelo rasante que sigue el recorrido. */
+function corridorCenterline(feature) {
+  let ring = null, bestA = 0;
+  for (const poly of feature.geometry.coordinates) {
+    const r = poly && poly[0];
+    if (!r || r.length < 4) continue;
+    let a = 0;
+    for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1];
+    a = Math.abs(a);
+    if (a > bestA) { bestA = a; ring = r; }
+  }
+  if (!ring) return null;
+  const kx = 111320 * Math.cos(ring[0][1] * Math.PI / 180), ky = 110540;  // grados → m
+  const pts = ring.map(([x, y]) => [x * kx, y * ky]);
+  const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+  const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+  let sxx = 0, sxy = 0, syy = 0;
+  for (const [x, y] of pts) {
+    const dx = x - cx, dy = y - cy;
+    sxx += dx * dx; sxy += dx * dy; syy += dy * dy;
+  }
+  const ang = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+  const ux = Math.cos(ang), uy = Math.sin(ang);
+  const proj = pts.map(([x, y]) => [(x - cx) * ux + (y - cy) * uy, x, y]);
+  let tMin = Infinity, tMax = -Infinity;
+  for (const [t] of proj) { if (t < tMin) tMin = t; if (t > tMax) tMax = t; }
+  const span = tMax - tMin;
+  if (span < 300) return null;                       // muy corto para un rasante
+  const bins = Math.max(8, Math.min(40, Math.round(span / 80)));
+  const acc = Array.from({ length: bins }, () => [0, 0, 0]);
+  for (const [t, x, y] of proj) {
+    const b = Math.min(bins - 1, Math.floor(((t - tMin) / span) * bins));
+    acc[b][0] += x; acc[b][1] += y; acc[b][2]++;
+  }
+  let line = acc.filter(a => a[2]).map(a => [a[0] / a[2], a[1] / a[2]]);
+  if (line.length < 2) return null;
+  line = line.map((p, i) => {                        // media móvil de 3
+    const a = line[Math.max(0, i - 1)], b = line[Math.min(line.length - 1, i + 1)];
+    return [(a[0] + p[0] + b[0]) / 3, (a[1] + p[1] + b[1]) / 3];
+  });
+  let lenM = 0;
+  for (let i = 1; i < line.length; i++) lenM += Math.hypot(line[i][0] - line[i - 1][0], line[i][1] - line[i - 1][1]);
+  return { path: line.map(([x, y]) => [x / kx, y / ky]), lenM };
+}
+
+/* Vuelo rasante: la cámara recorre la ruta a baja altura con el rumbo
+   acompañando las curvas (jumpTo por frame, como la órbita). */
+function flyAlongPath(path, duration, onDone) {
+  const kx = 111320 * Math.cos(path[0][1] * Math.PI / 180), ky = 110540;
+  const cum = [0];
+  for (let i = 1; i < path.length; i++) {
+    cum.push(cum[i - 1] + Math.hypot((path[i][0] - path[i - 1][0]) * kx, (path[i][1] - path[i - 1][1]) * ky));
+  }
+  const total = cum[cum.length - 1];
+  const at = d => {
+    let i = 1;
+    while (i < cum.length - 1 && cum[i] < d) i++;
+    const f = (d - cum[i - 1]) / Math.max(cum[i] - cum[i - 1], 1e-9);
+    return [path[i - 1][0] + (path[i][0] - path[i - 1][0]) * f,
+            path[i - 1][1] + (path[i][1] - path[i - 1][1]) * f];
+  };
+  const bearingAt = d => {
+    const a = at(Math.max(0, d - 30)), b = at(Math.min(total, d + 60));
+    return Math.atan2((b[0] - a[0]) * kx, (b[1] - a[1]) * ky) * 180 / Math.PI;
+  };
+  const t0 = performance.now();
+  let bear = bearingAt(0);
+  const step = now => {
+    if (!state.tour.running) return;
+    const t = Math.min((now - t0) / duration, 1);
+    const d = total * t * t * (3 - 2 * t);           // suave al arrancar y frenar
+    bear += ((((bearingAt(d) - bear) % 360) + 540) % 360 - 180) * 0.08;
+    map.jumpTo({ center: at(d), zoom: 17.25, pitch: 76, bearing: bear });
+    if (t < 1) state.tour.raf = requestAnimationFrame(step);
+    else onDone();
+  };
+  state.tour.raf = requestAnimationFrame(step);
+}
+
 function buildTourWaypoints() {
   const multi = state.data.multi;
   const byArea = cls => multi.features
@@ -911,10 +992,30 @@ function buildTourWaypoints() {
   const patches = shuffled(byArea("parche-le").slice(0, 5)).slice(0, 2);
   const rnd = (a, b) => a + Math.random() * (b - a);
 
+  /* Corredor para el rasante: el herbáceo con eje más largo (protagonista);
+     al azar entre los 2 mejores para variar entre vuelos */
+  const flyable = byArea("corr-herb")
+    .map(f => ({ f, cl: corridorCenterline(f) }))
+    .filter(x => x.cl)
+    .sort((a, b) => b.cl.lenM - a.cl.lenM);
+  const razante = flyable.length ? shuffled(flyable.slice(0, 2))[0].cl : null;
+
   const wp = [];
   wp.push({ center: HOME_VIEW.center, zoom: HOME_VIEW.zoom + 0.4, pitch: rnd(50, 60), bearing: rnd(-40, 40), duration: 6000, msg: "Sobrevolando el establecimiento" });
   if (corridors[0]) wp.push({ center: featureCentroid(corridors[0]), zoom: rnd(15.2, 15.6), pitch: rnd(68, 74), bearing: rnd(0, 360), duration: 8000, msg: "Descendiendo sobre un corredor biológico" });
-  if (corridors[1]) wp.push({ center: featureCentroid(corridors[1]), zoom: rnd(15.6, 16.0), pitch: rnd(72, 76), bearing: rnd(0, 360), duration: 9000, msg: "Vuelo rasante sobre el corredor" });
+  if (razante) {
+    // arrancar por la punta más cercana al waypoint anterior
+    const prev = wp[wp.length - 1].center;
+    const p = razante.path;
+    const d2 = q => (q[0] - prev[0]) ** 2 + (q[1] - prev[1]) ** 2;
+    if (d2(p[p.length - 1]) < d2(p[0])) p.reverse();
+    const kx = 111320 * Math.cos(p[0][1] * Math.PI / 180);
+    const b0 = Math.atan2((p[1][0] - p[0][0]) * kx, (p[1][1] - p[0][1]) * 110540) * 180 / Math.PI;
+    wp.push({ center: p[0], zoom: 16.4, pitch: 72, bearing: b0, duration: 6000, msg: "Descendiendo al corredor" });
+    wp.push({ fly: razante, duration: Math.max(9000, Math.min(16000, razante.lenM / 90 * 1000)), msg: "Vuelo rasante siguiendo el corredor" });
+  } else if (corridors[1]) {
+    wp.push({ center: featureCentroid(corridors[1]), zoom: rnd(15.6, 16.0), pitch: rnd(72, 76), bearing: rnd(0, 360), duration: 9000, msg: "Vuelo rasante sobre el corredor" });
+  }
   if (patches[0]) {
     const c = featureCentroid(patches[0]);
     const b = rnd(0, 360);
@@ -941,14 +1042,21 @@ function nextTourStep() {
   if (state.tour.step >= state.tour.route.length) { stopTour(); return; }
   const wp = state.tour.route[state.tour.step++];
   document.getElementById("tour-banner").textContent = wp.msg;
-  map.easeTo({ ...wp, easing: t => t * (2 - t), essential: false });
-  state.tour.timer = setTimeout(nextTourStep, wp.duration + 400);
+  if (wp.fly) {
+    flyAlongPath(wp.fly.path, wp.duration, () => {
+      state.tour.timer = setTimeout(nextTourStep, 400);
+    });
+  } else {
+    map.easeTo({ ...wp, easing: t => t * (2 - t), essential: false });
+    state.tour.timer = setTimeout(nextTourStep, wp.duration + 400);
+  }
 }
 
 function stopTour() {
   if (!state.tour.running) return;
   state.tour.running = false;
   clearTimeout(state.tour.timer);
+  if (state.tour.raf) cancelAnimationFrame(state.tour.raf);
   document.getElementById("btn-tour").classList.remove("active");
   document.getElementById("tour-banner").classList.remove("visible");
 }
