@@ -810,7 +810,9 @@ function setScenario(next, animate = true) {
   const FADE_MS = 700, GROW_MS = 1800;
   const t0 = performance.now();
   const frame = now => {
-    const dt = now - t0;
+    // El timestamp del primer rAF puede ser anterior a t0 (quirk de Chrome):
+    // sin clamp, fade/grow dan negativos y MapLibre rechaza el valor con error
+    const dt = Math.max(0, now - t0);
     const fade = Math.min(dt / FADE_MS, 1);
     const grow = easeOutCubic(Math.min(dt / GROW_MS, 1));
     applyOpacity(prev, 1 - fade);
